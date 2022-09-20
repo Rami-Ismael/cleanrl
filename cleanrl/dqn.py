@@ -114,7 +114,7 @@ class QNetwork(nn.Module):
             logging.info(self.network)
             ## set the qconfig for the model
             self.network.qconfig = torch.ao.quantization.get_default_qat_qconfig("fbgemm")
-            logging.info("Set qconfig" , self.network.qconfig)
+            logging.info(f"Set qconfig { self.network.qconfig} for the model")
             ## Prepare the model for quantize aware trianing
             torch.ao.quantization.prepare_qat(self.network, inplace=True)
             logging.info("Prepared model for quantization aware training")
