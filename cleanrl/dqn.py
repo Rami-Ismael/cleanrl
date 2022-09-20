@@ -91,18 +91,41 @@ def make_env(env_id, seed, idx, capture_video, run_name):
 
 # ALGO LOGIC: initialize agent here:
 class QNetwork(nn.Module):
-    def __init__(self, env):
+    def __init__(self, env , 
+                 quantize:bool = False,
+                 backend:str = 'fbgemm',
+                 ):
         super().__init__()
         self.network = nn.Sequential(
+            torch.ao.quantization.QuantStub(),
             nn.Linear(np.array(env.single_observation_space.shape).prod(), 120),
             nn.ReLU(),
             nn.Linear(120, 84),
             nn.ReLU(),
             nn.Linear(84, env.single_action_space.n),
+            torch.ao.quantization.DeQuantStub()
         )
+        self.quantize = quantize
+        if quantize:
+            ## Fuse your model
+            self.fuse_model()
+            logging.info("Fused model")
+            logging.info(self.network)
+            ## set the qconfig for the model
+            self.network.qconfig = torch.ao.quantization.get_default_qat_config('fbgemm')
+            logging.info("Set qconfig" , self.network.qconfig)
+            ## Prepare the model for quantize aware trianing
+            torch.ao.quantization.prepare_qat(self.network, inplace=True)
+            logging.info("Prepared model for quantization aware training")
+            logging.info(self.network)
 
     def forward(self, x):
         return self.network(x)
+    ## Fuse the model
+    def fuse_model(self):
+        layers = []
+        for layers in range( 1, len(self.network) - 2 , 2):
+            layers.append(torch.quantization.fuse_modules(self.network[layers], self.network[layers + 1]) , inplace = True)
 
 
 def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
@@ -144,10 +167,10 @@ if __name__ == "__main__":
     envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
-    q_network = QNetwork(envs).to(device)
+    q_network = QNetwork(envs , quantize = args.quantize).to(device)
     logger.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
-    target_network = QNetwork(envs).to(device)
+    target_network = QNetwork(envs , args.quantize).to(device)
     target_network.load_state_dict(q_network.state_dict())
     logger.info(f"TargetNetwork: {target_network} and the model is on the device: {next(target_network.parameters()).device}")
 
