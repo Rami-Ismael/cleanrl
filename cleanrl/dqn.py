@@ -17,7 +17,7 @@ import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
-logger = logging.basicConfig(filename="tests.log", level=logging.DEBUG,
+logging.basicConfig(filename="tests.log", level=logging.DEBUG,
                     format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 
 
@@ -106,13 +106,15 @@ class QNetwork(nn.Module):
             torch.ao.quantization.DeQuantStub()
         )
         self.quantize = quantize
+        logging.info(f"The model is {self.network}")
+        
         if quantize:
             ## Fuse your model
             self.fuse_model()
             logging.info("Fused model")
             logging.info(self.network)
             ## set the qconfig for the model
-            self.network.qconfig = torch.ao.quantization.get_default_qat_config('fbgemm')
+            self.network.qconfig = torch.ao.quantization.get_default_qat_qconfig("fbgemm")
             logging.info("Set qconfig" , self.network.qconfig)
             ## Prepare the model for quantize aware trianing
             torch.ao.quantization.prepare_qat(self.network, inplace=True)
@@ -123,9 +125,10 @@ class QNetwork(nn.Module):
         return self.network(x)
     ## Fuse the model
     def fuse_model(self):
-        layers = []
-        for layers in range( 1, len(self.network) - 2 , 2):
-            layers.append(torch.quantization.fuse_modules(self.network[layers], self.network[layers + 1]) , inplace = True)
+        layers = list()
+        for index in range( 1, len(self.network) - 2 , 2):
+            layers.append([str(index) , str(index + 1)])
+        torch.ao.quantization.fuse_modules(self.network, layers, inplace=True)
 
 
 def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
@@ -161,18 +164,18 @@ if __name__ == "__main__":
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
-    logger.info(f"The device the DQN is running on: {device}")
+    logging.info(f"The device the DQN is running on: {device}")
 
     # env setup
     envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     q_network = QNetwork(envs , quantize = args.quantize).to(device)
-    logger.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
+    logging.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
     target_network = QNetwork(envs , args.quantize).to(device)
     target_network.load_state_dict(q_network.state_dict())
-    logger.info(f"TargetNetwork: {target_network} and the model is on the device: {next(target_network.parameters()).device}")
+    logging.info(f"TargetNetwork: {target_network} and the model is on the device: {next(target_network.parameters()).device}")
 
     rb = ReplayBuffer(
         args.buffer_size,
