@@ -71,6 +71,9 @@ def parse_args():
         help="timestep to start learning")
     parser.add_argument("--train-frequency", type=int, default=4,
         help="the frequency of training")
+    
+    # Quantization
+    parser.add_argument("--quantize", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     args = parser.parse_args()
     # fmt: on
     return args
@@ -107,7 +110,6 @@ class QNetwork(nn.Module):
                  ):
         super().__init__()
         self.network = nn.Sequential(
-            torch.ao.quantization.QuantStub(),
             nn.Conv2d(4, 32, 8, stride=4),
             nn.ReLU(),
             nn.Conv2d(32, 64, 4, stride=2),
@@ -118,12 +120,13 @@ class QNetwork(nn.Module):
             nn.Linear(3136, 512),
             nn.ReLU(),
             nn.Linear(512, env.single_action_space.n),
-            torch.ao.quantization.DeQuantStub(),
         )
         logging.info(f"QNetwork: {self.network}")
         ## quantization 
         self.quantize = quantize
         if self.quantize:
+            ## add a nn.QuantiStub() layer to convert the input to quantized tensor to the network
+            self.network = torch.ao.quantization.QuantWrapper(self.network)
             ## fuse the network
             self.fuse_model()
             logging.info(f"QNetwork: {self.network} after fuse")
@@ -178,9 +181,9 @@ if __name__ == "__main__":
     envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
-    q_network = QNetwork(envs).to(device)
+    q_network = QNetwork(envs , quantize = args.quantize).to(device)
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
-    target_network = QNetwork(envs).to(device)
+    target_network = QNetwork(envs , quantize = args.quantize ).to(device)
     target_network.load_state_dict(q_network.state_dict())
 
     try:
