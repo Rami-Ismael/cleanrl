@@ -1,9 +1,12 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/dqn/#dqnpy
 import argparse
+from cmath import log
 import os
 import random
 import time
 from distutils.util import strtobool
+import logging
+from rich import print
 
 import gym
 import numpy as np
@@ -13,6 +16,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
+
+logger = logging.basicConfig(filename="tests.log", level=logging.DEBUG,
+                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 
 
 def parse_args():
@@ -60,6 +66,9 @@ def parse_args():
         help="timestep to start learning")
     parser.add_argument("--train-frequency", type=int, default=10,
         help="the frequency of training")
+    
+    # Quantization specific arguments
+    parser.add_argument("--quantize", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     args = parser.parse_args()
     # fmt: on
     return args
@@ -129,15 +138,18 @@ if __name__ == "__main__":
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
+    logger.info(f"The device the DQN is running on: {device}")
 
     # env setup
     envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     q_network = QNetwork(envs).to(device)
+    logger.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
     target_network = QNetwork(envs).to(device)
     target_network.load_state_dict(q_network.state_dict())
+    logger.info(f"TargetNetwork: {target_network} and the model is on the device: {next(target_network.parameters()).device}")
 
     rb = ReplayBuffer(
         args.buffer_size,
@@ -204,6 +216,5 @@ if __name__ == "__main__":
             # update the target network
             if global_step % args.target_network_frequency == 0:
                 target_network.load_state_dict(q_network.state_dict())
-
     envs.close()
     writer.close()
