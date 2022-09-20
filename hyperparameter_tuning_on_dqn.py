@@ -15,7 +15,6 @@ tuner = Tuner(
     params_fn=lambda trial: {
         "learning-rate": trial.suggest_loguniform("learning-rate", 0.0003, 0.003),
         "total-timesteps": 100000,
-        "num-envs": 16,
         "torch-deterministic": True,
         "buffer-size": trial.suggest_int("buffer-size", 10000, 100000),
         "gamma": trial.suggest_uniform("gamma", 0.9, 0.999),
