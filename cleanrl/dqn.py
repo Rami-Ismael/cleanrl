@@ -6,7 +6,7 @@ import random
 import time
 from distutils.util import strtobool
 import logging
-from rich import print
+from quantize_methods import size_of_model
 
 import gym
 import numpy as np
@@ -104,10 +104,18 @@ class QNetwork(nn.Module):
             nn.Linear(84, env.single_action_space.n),
         )
         self.quantize = quantize
-        logging.info(f"The model is {self.network}")
+        logging.info(f"The model is {self.network} GB")  
+        logging.info(f"The size of the model is {size_of_model(self.network)}")
         
         if quantize:
-            self.network = torch.ao.quantization.QuantWrapper(self.network)
+            self.network = nn.Sequential(
+                torch.ao.quantization.QuantStub(),
+                nn.Linear(np.array(env.single_observation_space.shape).prod(), 120),
+                nn.ReLU(),
+                nn.Linear(120, 84),
+                nn.ReLU(),
+                nn.Linear(84, env.single_action_space.n),
+            )
             ## Fuse your model
             self.fuse_model()
             logging.info("Fused model")
@@ -127,6 +135,7 @@ class QNetwork(nn.Module):
         layers = list()
         for index in range( 1, len(self.network) - 2 , 2):
             layers.append([str(index) , str(index + 1)])
+        logging.info(f"Layers to fuse {layers}")
         torch.ao.quantization.fuse_modules(self.network, layers, inplace=True)
 
 
@@ -241,5 +250,11 @@ if __name__ == "__main__":
             # update the target network
             if global_step % args.target_network_frequency == 0:
                 target_network.load_state_dict(q_network.state_dict())
+    
+    ## Convert the model to 8 bit
+    q_network.to("cpu")
+    q_network.eval()
+    torch.ao.quantization.convert(q_network, inplace=True)
+    logging.info(f"Model converted to 8 bit and the size of the model is {size_of_model(q_network)}")
     envs.close()
     writer.close()
