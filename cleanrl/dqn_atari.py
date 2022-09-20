@@ -1,5 +1,6 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/dqn/#dqn_ataripy
 import argparse
+import logging
 import os
 import random
 import time
@@ -20,6 +21,9 @@ from stable_baselines3.common.atari_wrappers import (
 )
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
+
+logging.basicConfig(filename="tests.log", level=logging.DEBUG,
+                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 
 
 def parse_args():
@@ -98,9 +102,12 @@ def make_env(env_id, seed, idx, capture_video, run_name):
 
 # ALGO LOGIC: initialize agent here:
 class QNetwork(nn.Module):
-    def __init__(self, env):
+    def __init__(self, env,
+                 quantize:bool = False,
+                 ):
         super().__init__()
         self.network = nn.Sequential(
+            torch.ao.quantization.QuantStub(),
             nn.Conv2d(4, 32, 8, stride=4),
             nn.ReLU(),
             nn.Conv2d(32, 64, 4, stride=2),
@@ -111,10 +118,26 @@ class QNetwork(nn.Module):
             nn.Linear(3136, 512),
             nn.ReLU(),
             nn.Linear(512, env.single_action_space.n),
+            torch.ao.quantization.DeQuantStub(),
         )
-
+        logging.info(f"QNetwork: {self.network}")
+        ## quantization 
+        self.quantize = quantize
+        if self.quantize:
+            ## fuse the network
+            self.fuse_model()
+            logging.info(f"QNetwork: {self.network} after fuse")
+            ## set the quanization configuration
+            self.network.qconfig = torch.ao.quantization.get_default_qat_qconfig('fbgemm')
+            logging.info(f"Quantize Config: {self.network.qconfig}")
+            ## Prepare the model for quantization aware training
+            torch.ao.quantization.prepare_qat(self.network, inplace=True)
+            logging.info(f"QNetwork: {self.network} after prepare_qat")
     def forward(self, x):
         return self.network(x / 255.0)
+    def fuse_model(self):
+        ## Fuse Conv, relu in the network 
+        torch.ao.quantization.fuse_modules(self.network, [ ["1", "2"], ["3", "4"], ["5", "6"] , ["8","9"]], inplace=True)
 
 
 def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
@@ -160,14 +183,25 @@ if __name__ == "__main__":
     target_network = QNetwork(envs).to(device)
     target_network.load_state_dict(q_network.state_dict())
 
-    rb = ReplayBuffer(
-        args.buffer_size,
-        envs.single_observation_space,
-        envs.single_action_space,
-        device,
-        optimize_memory_usage=True,
-        handle_timeout_termination=True,
-    )
+    try:
+        rb = ReplayBuffer(
+            args.buffer_size,
+            envs.single_observation_space,
+            envs.single_action_space,
+            device,
+            optimize_memory_usage=True,
+            handle_timeout_termination=True,
+        )
+    except ValueError as e:
+        logging.error(e)
+        rb = ReplayBuffer(
+            args.buffer_size,
+            envs.single_observation_space,
+            envs.single_action_space,
+            device,
+            optimize_memory_usage=False,
+            handle_timeout_termination=True,
+        )
     start_time = time.time()
 
     # TRY NOT TO MODIFY: start the game
