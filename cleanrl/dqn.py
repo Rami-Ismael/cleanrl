@@ -97,18 +97,17 @@ class QNetwork(nn.Module):
                  ):
         super().__init__()
         self.network = nn.Sequential(
-            torch.ao.quantization.QuantStub(),
             nn.Linear(np.array(env.single_observation_space.shape).prod(), 120),
             nn.ReLU(),
             nn.Linear(120, 84),
             nn.ReLU(),
             nn.Linear(84, env.single_action_space.n),
-            torch.ao.quantization.DeQuantStub()
         )
         self.quantize = quantize
         logging.info(f"The model is {self.network}")
         
         if quantize:
+            self.network = torch.ao.quantization.QuantWrapper(self.network)
             ## Fuse your model
             self.fuse_model()
             logging.info("Fused model")
