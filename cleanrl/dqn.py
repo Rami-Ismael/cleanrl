@@ -115,6 +115,7 @@ class QNetwork(nn.Module):
                 nn.Linear(120, 84),
                 nn.ReLU(),
                 nn.Linear(84, env.single_action_space.n),
+                torch.ao.quantization.DeQuantStub(),
             )
             ## Fuse your model
             self.fuse_model()
@@ -256,5 +257,6 @@ if __name__ == "__main__":
     q_network.eval()
     torch.ao.quantization.convert(q_network, inplace=True)
     logging.info(f"Model converted to 8 bit and the size of the model is {size_of_model(q_network)}")
+    logging.info(f"The q network is {q_network}")
     envs.close()
     writer.close()

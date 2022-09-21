@@ -5,6 +5,7 @@ import os
 import random
 import time
 from distutils.util import strtobool
+from quantize_methods import size_of_model
 
 import gym
 import numpy as np
@@ -122,11 +123,11 @@ class QNetwork(nn.Module):
             nn.Linear(512, env.single_action_space.n),
         )
         logging.info(f"QNetwork: {self.network}")
+        logging.info(f"The size of the model is {size_of_model(self.network)}")
         ## quantization 
         self.quantize = quantize
         if self.quantize:
             ## add a nn.QuantiStub() layer to convert the input to quantized tensor to the network
-            self.network = torch.ao.quantization.QuantWrapper(self.network)
             ## fuse the network
             self.fuse_model()
             logging.info(f"QNetwork: {self.network} after fuse")
