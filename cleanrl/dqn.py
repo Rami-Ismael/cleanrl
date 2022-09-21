@@ -6,7 +6,7 @@ import random
 import time
 from distutils.util import strtobool
 import logging
-from quantize_methods import size_of_model
+
 
 import gym
 import numpy as np
@@ -19,8 +19,17 @@ from torch.utils.tensorboard import SummaryWriter
 
 logging.basicConfig(filename="tests.log", level=logging.DEBUG,
                     format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
+try:
+    from quantize_methods import size_of_model
+except ModuleNotFoundError as e:
+    logging.error(e)
 
-
+def size_of_model(model):
+    name_file = "temp.pt"
+    torch.save(model.state_dict(), name_file)
+    size =  os.path.getsize(name_file)/1e6
+    os.remove(name_file)
+    return size
 def parse_args():
     # fmt: off
     parser = argparse.ArgumentParser()
