@@ -30,7 +30,7 @@ for env in env_list:
             "target-network-frequency": trial.suggest_int("target-network-frequency", 100 , 1000),
             "start-e": 1,
             "end-e": 0.05,
-            "cuda": True
+            "cuda": True,
             "target-network-frequency": trial.suggest_int("target-network-frequency", 100 , 1000),
             "exploration-fraction": trial.suggest_uniform("exploration-fraction", 0.1, 0.5),
         },
