@@ -87,7 +87,10 @@ class Tuner:
             for seed in range(num_seeds):
                 normalized_scores = []
                 for env_id in self.target_scores.keys():
-                    sys.argv = algo_command + [f"--env-id={env_id}", f"--seed={seed}", "--track --wandb-project-name qat-rl"]
+                    print(algo_command)
+                    sys.argv = algo_command + [f"--env-id={env_id}", f"--seed={seed}", "--track"]
+                    if "--track" in sys.argv:
+                        wandb.finish()
                     with HiddenPrints():
                         experiment = runpy.run_path(path_name=self.script, run_name="__main__")
 

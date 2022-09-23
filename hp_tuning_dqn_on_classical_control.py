@@ -26,7 +26,7 @@ for env in env_list:
             "buffer-size": trial.suggest_int("buffer-size", 10000, 100000),
             "gamma": trial.suggest_uniform("gamma", 0.9, 0.999),
             "batch-size": trial.suggest_int("batch-size", 128, 512),
-            "quantize": trial.suggest_categorical("quantized", [True, False]),
+            "quantize": True,
             "target-network-frequency": trial.suggest_int("target-network-frequency", 100 , 1000),
             "start-e": 1,
             "end-e": 0.05,
