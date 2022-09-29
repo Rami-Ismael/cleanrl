@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import logging
 import random
 import time
 from distutils.util import strtobool
@@ -13,6 +14,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
+
+logging.basicConfig(filename="tests.log", level=logging.NOTSET,
+                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 
 
 def parse_args():
@@ -72,12 +76,22 @@ def parse_args():
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
+    
+    # Quantization specific arguments
+    parser.add_argument("--quantize", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     # fmt: on
     return args
 
+
+def size_of_model(model):
+    name_file = "temp.pt"
+    torch.save(model.state_dict(), name_file)
+    size =  os.path.getsize(name_file)/1e6
+    os.remove(name_file)
+    return size
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     def thunk():
@@ -101,22 +115,69 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 
 
 class Agent(nn.Module):
-    def __init__(self, envs):
+    def __init__(self, 
+                 envs,
+                 quantize:bool = False,
+                 backends:str = "fgbem",
+                 ):
         super().__init__()
-        self.critic = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 1), std=1.0),
-        )
-        self.actor = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, envs.single_action_space.n), std=0.01),
-        )
+        
+        self.backend = backends
+        self.size_of_model  = -1
+        if  quantize == False:
+        
+            self.critic = nn.Sequential(
+                layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 1), std=1.0),
+            )
+            self.actor = nn.Sequential(
+                layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, envs.single_action_space.n), std=0.01),
+            )
+            self.size_of_model = size_of_model(
+                model = self.critic
+            ) + size_of_model( self.actor)
+            
+        elif quantize == True:
+            self.critic = nn.Sequential(
+                torch.ao.quantization.QuantStub(),
+                layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 1), std=1.0),
+                torch.ao.quantization.DeQuantStub(),
+            )
+            self.actor = nn.Sequential(
+                torch.ao.quantization.QuantStub(),
+                layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, envs.single_action_space.n), std=0.01),
+                torch.ao.quantization.DeQuantStub(),
+            )
+            
+            self.size_of_model = size_of_model(self.critic) + size_of_model(self.actor)
+            
+            self.actor.qconfig = torch.ao.quantization.get_default_qat_qconfig("fbgemm")
+            self.critic.qconfig = torch.ao.quantization.get_default_qat_qconfig("fbgemm")
+            logging.info(f"Set qconfig { self.actor.qconfig} for the model")
+            ## Prepare the model for quantize aware trianing
+            torch.ao.quantization.prepare_qat(self.network, inplace=True)
+            torch.ao.quantization.prepare_qat(self.critic_int, inplace=True)
+            logging.info("Prepared model for quantization aware training")
+            logging.info(self.network)
+        else:
+            ValueError("quantize must be True or False")
+        
+            
 
     def get_value(self, x):
         return self.critic(x)
@@ -127,6 +188,26 @@ class Agent(nn.Module):
         if action is None:
             action = probs.sample()
         return action, probs.log_prob(action), probs.entropy(), self.critic(x)
+    ## Fuse the model
+    def fuse_model(self):
+        '''
+        ## the name of the model are 0 , 1 2 3 4 if not quantize
+        for x in model.actor.named_children():
+            print( x )
+        '''
+        layers = []
+        
+        for x in self.actor.named_children():
+            if x[0] not in ['0',"5"]  and isinstance(x[1],nn.Linear):
+                layers.append( [x[0] , self.actor[int(x[0]) + 1 ] ] )
+        
+        torch.ao.quantization.fuse_modules(self.actor, layers, inplace=True)
+        
+        
+        
+                
+                
+        return self
 
 
 if __name__ == "__main__":
@@ -164,7 +245,7 @@ if __name__ == "__main__":
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
-    agent = Agent(envs).to(device)
+    agent = Agent(envs , quantize = args.quantize ).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
@@ -319,6 +400,5 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
-
     envs.close()
     writer.close()
