@@ -5,7 +5,7 @@ from cleanrl_utils.tuner import Tuner
 env_list = [
 "Acrobot-v1",
 "CartPole-v1",
-"Pendulum"
+"Pendulum-v1",
 "MountainCar-v0",
 ]
 

@@ -30,6 +30,7 @@ def size_of_model(model):
     size =  os.path.getsize(name_file)/1e6
     os.remove(name_file)
     return size
+
 def parse_args():
     # fmt: off
     parser = argparse.ArgumentParser()

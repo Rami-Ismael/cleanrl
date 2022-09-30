@@ -170,10 +170,11 @@ class Agent(nn.Module):
             self.critic.qconfig = torch.ao.quantization.get_default_qat_qconfig("fbgemm")
             logging.info(f"Set qconfig { self.actor.qconfig} for the model")
             ## Prepare the model for quantize aware trianing
-            torch.ao.quantization.prepare_qat(self.network, inplace=True)
-            torch.ao.quantization.prepare_qat(self.critic_int, inplace=True)
+            torch.ao.quantization.prepare_qat(self.actor, inplace=True)
+            torch.ao.quantization.prepare_qat(self.critic, inplace=True)
             logging.info("Prepared model for quantization aware training")
-            logging.info(self.network)
+            logging.info(self.actor)
+            logging.info(self.critic)
         else:
             ValueError("quantize must be True or False")
         
