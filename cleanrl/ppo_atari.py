@@ -12,6 +12,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
+import logging
 
 from stable_baselines3.common.atari_wrappers import (  # isort:skip
     ClipRewardEnv,
@@ -21,6 +22,15 @@ from stable_baselines3.common.atari_wrappers import (  # isort:skip
     NoopResetEnv,
 )
 
+logging.basicConfig(filename="tests.log", level=logging.NOTSET,
+                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
+
+def size_of_model(model):
+    name_file = "temp.pt"
+    torch.save(model.state_dict(), name_file)
+    size =  os.path.getsize(name_file)/1e6
+    os.remove(name_file)
+    return size
 
 def parse_args():
     # fmt: off
@@ -79,6 +89,9 @@ def parse_args():
         help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
+    
+    # Quantize
+    parser.add_argument("--quantize", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
@@ -117,21 +130,60 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 
 
 class Agent(nn.Module):
-    def __init__(self, envs):
+    def __init__(self, 
+                 envs,
+                 quantize:bool = False,
+                 backend:str = 'fgbem',
+                 ):
         super().__init__()
-        self.network = nn.Sequential(
-            layer_init(nn.Conv2d(4, 32, 8, stride=4)),
-            nn.ReLU(),
-            layer_init(nn.Conv2d(32, 64, 4, stride=2)),
-            nn.ReLU(),
-            layer_init(nn.Conv2d(64, 64, 3, stride=1)),
-            nn.ReLU(),
-            nn.Flatten(),
-            layer_init(nn.Linear(64 * 7 * 7, 512)),
-            nn.ReLU(),
-        )
-        self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
-        self.critic = layer_init(nn.Linear(512, 1), std=1)
+        self.quantize = quantize
+        self.backend = backend
+        if quantize == False:
+            self.network = nn.Sequential(
+                layer_init(nn.Conv2d(4, 32, 8, stride=4)),
+                nn.ReLU(),
+                layer_init(nn.Conv2d(32, 64, 4, stride=2)),
+                nn.ReLU(),
+                layer_init(nn.Conv2d(64, 64, 3, stride=1)),
+                nn.ReLU(),
+                nn.Flatten(),
+                layer_init(nn.Linear(64 * 7 * 7, 512)),
+                nn.ReLU(),
+            )
+            self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
+            self.critic = layer_init(nn.Linear(512, 1), std=1)
+        elif quantize == True:
+            self.network = nn.Sequential(
+                torch.ao.quantization.QuantStub(),
+                layer_init(nn.Conv2d(4, 32, 8, stride=4)),
+                nn.ReLU(),
+                layer_init(nn.Conv2d(32, 64, 4, stride=2)),
+                nn.ReLU(),
+                layer_init(nn.Conv2d(64, 64, 3, stride=1)),
+                nn.ReLU(),
+                nn.Flatten(),
+                layer_init(nn.Linear(64 * 7 * 7, 512)),
+                nn.ReLU(),
+                torch.ao.quantization.DeQuantStub(),
+            )
+            self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
+            self.critic = layer_init(nn.Linear(512, 1), std=1)
+            
+            
+            self.actor.qconfig = torch.ao.quantization.get_default_qat_qconfig("fbgemm")
+            self.critic.qconfig = torch.ao.quantization.get_default_qat_qconfig("fbgemm")
+            logging.info(f"Set qconfig { self.actor.qconfig} for the model")
+            ## Prepare the model for quantize aware trianing
+            torch.ao.quantization.prepare_qat(self.actor, inplace=True)
+            torch.ao.quantization.prepare_qat(self.critic, inplace=True)
+            logging.info("Prepared model for quantization aware training")
+            logging.info(self.actor)
+            logging.info(self.critic)
+        else:
+            ValueError("quantize must be True or False")
+            
+        self.size_of_model = size_of_model( self.critic  )  + size_of_model( self.actor  ) 
+        
 
     def get_value(self, x):
         return self.critic(self.network(x / 255.0))
@@ -143,6 +195,25 @@ class Agent(nn.Module):
         if action is None:
             action = probs.sample()
         return action, probs.log_prob(action), probs.entropy(), self.critic(hidden)
+    def size_of_model( self ):
+        return size_of_model( self.critic) + size_of_model( self.actor ) 
+    def inference( self ):
+        x = torch.randint(
+            1 , 210 , 100 , 3 
+        )
+        num_samples = 200
+        
+        with torch.no_grad():
+            start_time = time.time()
+            for _ in range(num_samples):
+                _ = self.get_action_and_value
+                (x)
+                end_time = time.time()
+        elapsed_time = end_time - start_time
+        elapsed_time_ave = elapsed_time / num_samples
+
+        return elapsed_time_ave
+
 
 
 if __name__ == "__main__":
@@ -335,6 +406,12 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
-
+    ## Convert the model to 8 Bits
+    agent.to("cpu")
+    agent.eval()
+    ## Convert convert the model 
+    torch.ao.quantization.convert(agent , inplace = True )
+    logging.info(f"Model converted to 8 bit and the size of the model is {agent.size_of_model() } ")
+    logging.info(f"The q network is {agent}")
     envs.close()
     writer.close()
