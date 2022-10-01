@@ -36,6 +36,7 @@ class Tuner:
         storage: str = "sqlite:///cleanrl_hpopt.db",
         study_name: str = "",
         wandb_kwargs: Dict[str, any] = {},
+        start_trial:Dict[str, any] = None,
     ) -> None:
         self.script = script
         self.metric = metric
@@ -67,6 +68,7 @@ class Tuner:
         if len(self.study_name) == 0:
             self.study_name = f"tuner_{int(time.time())}"
         self.wandb_kwargs = wandb_kwargs
+        self.start_trial = start_trial
 
     def tune(self, num_trials: int, num_seeds: int) -> None:
         def objective(trial: optuna.Trial):
@@ -139,6 +141,9 @@ class Tuner:
             pruner=self.pruner,
             sampler=self.sampler,
         )
+        if self.start_trial:
+            study.enqueue_trial(self.start_trial)
+        # https://optuna.readthedocs.io/en/stable/reference/generated/optuna.study.Study.html#optuna.study.Study.enqueue_trial
         print("==========================================================================================")
         print("run another tuner with the following command:")
         print(f"python -m cleanrl_utils.tuner --study-name {self.study_name}")
