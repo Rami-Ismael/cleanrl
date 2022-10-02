@@ -146,7 +146,7 @@ class Agent(nn.Module):
             
         elif quantize == True:
             self.critic = nn.Sequential(
-                torch.ao.quantization.QuantStub(),
+                torch.quantization.QuantStub(),
                 layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
                 nn.Tanh(),
                 layer_init(nn.Linear(64, 64)),
@@ -155,7 +155,7 @@ class Agent(nn.Module):
                 torch.ao.quantization.DeQuantStub(),
             )
             self.actor = nn.Sequential(
-                torch.ao.quantization.QuantStub(),
+                torch.quantization.QuantStub(),
                 layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
                 nn.Tanh(),
                 layer_init(nn.Linear(64, 64)),
@@ -166,8 +166,8 @@ class Agent(nn.Module):
             
             self.size_of_model = size_of_model(self.critic) + size_of_model(self.actor)
             
-            self.actor.qconfig = torch.ao.quantization.get_default_qat_qconfig("fbgemm")
-            self.critic.qconfig = torch.ao.quantization.get_default_qat_qconfig("fbgemm")
+            self.actor.qconfig = torch.quantization.get_default_qat_qconfig("fbgemm")
+            self.critic.qconfig = torch.quantization.get_default_qat_qconfig("fbgemm")
             logging.info(f"Set qconfig { self.actor.qconfig} for the model")
             ## Prepare the model for quantize aware trianing
             torch.ao.quantization.prepare_qat(self.actor, inplace=True)
