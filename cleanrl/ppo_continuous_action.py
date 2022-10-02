@@ -120,7 +120,6 @@ class Agent(nn.Module):
         super().__init__()
         self.quantize = quantize
         self.backend = backend
-        self.model_size = None
         if quantize:
             self.critic = nn.Sequential(
                 torch.ao.quantization.QuantStub(),
@@ -157,7 +156,7 @@ class Agent(nn.Module):
                 layer_init(nn.Linear(64, np.prod(envs.single_action_space.shape)), std=0.01),
             )
             self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
-        self.model_size = self.size_of_model( self.critic) + self.size_of_model( self.actor_mean)
+        #self.model_size = self.size_of_model( self.critic) + self.size_of_model( self.actor_mean)
         
 
     def get_value(self, x):

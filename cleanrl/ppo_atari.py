@@ -182,7 +182,11 @@ class Agent(nn.Module):
         else:
             ValueError("quantize must be True or False")
             
-        
+    def fuse_model(self):
+        #torch.ao.quantization.fuse_modules(self.network, [['0', '1'], ['2', '3'], ['4', '5']], inplace=True)
+        #logging.info("Fused model modules: ")
+        #logging.info(self.network)
+        torch.ao.quantization.fuse_modules(self.actor, [['1', '2'] , [ 3 , 4 ] , [ 5, 6] , [8 ,9]], inplace=True)
 
     def get_value(self, x):
         return self.critic(self.network(x / 255.0))
