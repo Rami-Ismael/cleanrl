@@ -33,7 +33,7 @@ for env in env_list:
             "clip-coef": trial.suggest_uniform("clip-coef", 0.1, 0.999),
             "quantize": True,
         },
-        pruner=optuna.pruners.MedianPruner(n_startup_trials=5),
+        pruner=optuna.pruners.MedianPruner(n_startup_trials=0, n_warmup_steps=10),
         sampler=optuna.samplers.TPESampler(),
         start_trial={
             "learning-rate": 2.5e-4,

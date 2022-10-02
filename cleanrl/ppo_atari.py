@@ -182,7 +182,6 @@ class Agent(nn.Module):
         else:
             ValueError("quantize must be True or False")
             
-        self.size_of_model = size_of_model( self.critic  )  + size_of_model( self.actor  ) 
         
 
     def get_value(self, x):
@@ -411,7 +410,7 @@ if __name__ == "__main__":
     agent.eval()
     ## Convert convert the model 
     torch.ao.quantization.convert(agent , inplace = True )
-    logging.info(f"Model converted to 8 bit and the size of the model is {agent.size_of_model() } ")
+    #logging.info(f"Model converted to 8 bit and the size of the model is {agent.size_of_model() } ")
     logging.info(f"The q network is {agent}")
     envs.close()
     writer.close()
