@@ -32,11 +32,14 @@ for env in env_list:
             "num-minibatches": trial.suggest_int("num-mini-batch", 1, 1024),
             "update-epochs": trial.suggest_int("update-epochs", 1, 1024),
             "norm-adv": trial.suggest_categorical("norm-adv", [True, False]),
+            "clip-coef": trial.suggest_uniform("clip-coef", 0.1, 0.999),
+            "quantization": True,
         },
         pruner=optuna.pruners.MedianPruner(n_startup_trials=5),
         sampler=optuna.samplers.TPESampler(),
         start_trial={
             "learning-rate": 2.5e-4,
+            "num-step": 128,
         }
     )
     tuner.tune(
