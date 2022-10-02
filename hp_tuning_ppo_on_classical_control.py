@@ -29,7 +29,7 @@ for env in env_list:
             "gae": trial.suggest_categorical("gae", [True, False]),
             "gamma": trial.suggest_uniform("gamma", 0.1, 0.999),\
             "gae-lambda": trial.suggest_uniform("gae-lambda", 0.1, 0.999),
-            "num-minibatches": trial.suggest_int("num-mini-batch", 1, 1024),
+            "num-minibatches": trial.suggest_int("num-mini-batch", 2, 1024),
             "update-epochs": trial.suggest_int("update-epochs", 1, 1024),
             "norm-adv": trial.suggest_categorical("norm-adv", [True, False]),
             "clip-coef": trial.suggest_uniform("clip-coef", 0.1, 0.999),

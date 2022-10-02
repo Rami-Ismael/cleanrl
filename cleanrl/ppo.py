@@ -15,7 +15,7 @@ import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
 
-logging.basicConfig(filename="tests.log", level=logging.NOTSET,
+logging.basicConfig(filename="tests.log", level=logging.INFO,
                     format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 
 
@@ -81,7 +81,12 @@ def parse_args():
     parser.add_argument("--quantize", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
+    logging.info("The Batch Size for ppo on classic control is {}".format(args.batch_size))
+    logging.info("The Number of Minibatches for ppo on classic control is {}".format(args.num_minibatches))
+    assert args.num_envs > 0, "num_envs must be greater than 0"
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
+    assert min(args.num_envs, args.num_minibatches) > 0, "num_envs and num_minibatches must be greater than 0"
+    assert args.minibatch_size > 0, "minibatch_size must be greater than 0"
     # fmt: on
     return args
 
