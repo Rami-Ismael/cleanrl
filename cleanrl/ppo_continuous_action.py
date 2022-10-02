@@ -4,6 +4,7 @@ import os
 import random
 import time
 from distutils.util import strtobool
+from turtle import shape
 
 import gym
 import numpy as np
@@ -119,6 +120,7 @@ class Agent(nn.Module):
         super().__init__()
         self.quantize = quantize
         self.backend = backend
+        self.model_size = None
         if quantize:
             self.critic = nn.Sequential(
                 torch.ao.quantization.QuantStub(),
@@ -155,6 +157,8 @@ class Agent(nn.Module):
                 layer_init(nn.Linear(64, np.prod(envs.single_action_space.shape)), std=0.01),
             )
             self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
+        self.model_size = self.size_of_model( self.critic) + self.size_of_model( self.actor_mean)
+        
 
     def get_value(self, x):
         return self.critic(x)
@@ -167,6 +171,27 @@ class Agent(nn.Module):
         if action is None:
             action = probs.sample()
         return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
+    def size_of_model( self  ):
+        name_file = "temp.pt"
+        torch.save(self.state_dict(), name_file)
+        size = os.path.getsize(name_file)
+        return size
+    def inference(self, x):
+        x = torch.randint(
+            np.array(envs.single_observation_space.shape).prod(), (1, 1), dtype=torch.float32
+        )
+        
+        num_samples = 200
+        
+        with torch.no_grad():
+            start_time = time.time()
+            for _ in range(num_samples):
+                self.get_action_and_value(x)
+                end_time = time.time()
+        elapsed_time = end_time - start_time
+        elapsed_time_per_sample = elapsed_time / num_samples
+        
+        return elapsed_time_per_sample
 
 
 if __name__ == "__main__":
