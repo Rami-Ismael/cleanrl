@@ -3,13 +3,16 @@ import runpy
 import sys
 import time
 from typing import Callable, Dict, List, Optional
-
+import logging
+from colorlog import log
 import numpy as np
 import optuna
 import wandb
 from rich import print
 from tensorboard.backend.event_processing import event_accumulator
 
+logging.basicConfig(filename="tests.log", level=logging.INFO,
+                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 
 class HiddenPrints:
     def __enter__(self):
@@ -91,8 +94,11 @@ class Tuner:
                 for env_id in self.target_scores.keys():
                     print(algo_command)
                     sys.argv = algo_command + [f"--env-id={env_id}", f"--seed={seed}", "--track"]
+                    logging.info("The program finished running")
                     if "--track" in sys.argv:
+                        logging.info("Save the test log file")
                         wandb.save('test.log')
+                        logging.info(" Called Weight and Bias Finished as the run is done")
                         wandb.finish()
                     with HiddenPrints():
                         experiment = runpy.run_path(path_name=self.script, run_name="__main__")

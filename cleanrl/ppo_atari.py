@@ -22,7 +22,7 @@ from stable_baselines3.common.atari_wrappers import (  # isort:skip
     NoopResetEnv,
 )
 
-logging.basicConfig(filename="tests.log", level=logging.NOTSET,
+logging.basicConfig(filename="tests.log", level=logging.INFO,
                     format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 
 def size_of_model(model):
