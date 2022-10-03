@@ -92,6 +92,7 @@ class Tuner:
                     print(algo_command)
                     sys.argv = algo_command + [f"--env-id={env_id}", f"--seed={seed}", "--track"]
                     if "--track" in sys.argv:
+                        wandb.save('test.log')
                         wandb.finish()
                     with HiddenPrints():
                         experiment = runpy.run_path(path_name=self.script, run_name="__main__")
