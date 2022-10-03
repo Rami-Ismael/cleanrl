@@ -122,6 +122,14 @@ class Tuner:
                     else:
                         normalized_scores += [np.average(metric_values)]
                     if run:
+                        try:
+                            logging.info("Save the test log file")
+                            wandb.save('test.log')                        
+                        except Exception as e:
+                            logging.info(e)
+                            print("Save the test log file failed")
+                            print(e)
+                        run.save()
                         run.log({f"{env_id}_return": np.average(metric_values)})
 
                 normalized_scoress += [normalized_scores]
