@@ -41,7 +41,7 @@ for env in env_list:
             "learning-rate": 2.5e-4,
             "num-step": 128,
             "ent-coef": 0.01,
-        }
+        },
         wandb_kwargs={"project": "cleanrl", "tags": ["ppo", "classic-controll"]},
     )
     tuner.tune(
