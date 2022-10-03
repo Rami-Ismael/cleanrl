@@ -30,7 +30,8 @@ for env in env_list:
         sampler=optuna.samplers.TPESampler(),
         start_trial={
             "learning-rate": 3e-4,
-        }
+        },
+        wandb_kwargs={"project": "cleanrl", "tags": ["ppo", "pybullet"]},
     )
     tuner.tune(
         num_trials=10,

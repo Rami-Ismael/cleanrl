@@ -93,13 +93,13 @@ class Tuner:
                 normalized_scores = []
                 for env_id in self.target_scores.keys():
                     print(algo_command)
-                    sys.argv = algo_command + [f"--env-id={env_id}", f"--seed={seed}", "--track"]
+                    sys.argv = algo_command + [f"--env-id={env_id}", f"--seed={seed}"]
                     logging.info("The program finished running")
                     if "--track" in sys.argv:
                         logging.info("Save the test log file")
                         wandb.save('test.log')
                         logging.info(" Called Weight and Bias Finished as the run is done")
-                        wandb.finish()
+                        wandb.finish(quiet=True)
                     with HiddenPrints():
                         experiment = runpy.run_path(path_name=self.script, run_name="__main__")
 
