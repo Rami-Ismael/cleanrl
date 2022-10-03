@@ -11,7 +11,7 @@ import wandb
 from rich import print
 from tensorboard.backend.event_processing import event_accumulator
 
-logging.basicConfig(filename="tests.log", level=logging.INFO,
+logging.basicConfig(filename="tests.log", level=logging.NOTSET,
                     format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 
 class HiddenPrints:

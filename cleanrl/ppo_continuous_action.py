@@ -17,6 +17,8 @@ from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
 
 
+logging.basicConfig(filename="tests.log", level=logging.NOTSET,
+                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 def parse_args():
     # fmt: off
     parser = argparse.ArgumentParser()
