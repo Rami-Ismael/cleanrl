@@ -148,7 +148,7 @@ class Agent(nn.Module):
             ## Convert the 
             self.actor_mean.qconfig = torch.ao.quantization.get_default_qconfig(backend)
             self.critic.qconfig = torch.ao.quantization.get_default_qconfig(backend)
-            logging.info(f" Set qConfig for actor and critic to {self.actor.qconfig}")
+            logging.info(f" Set qConfig for actor and critic to {self.actor_mean.qconfig}")
             ## Prepare the model for quantize aware training
             logging.info("Prepare the model for quantize aware training")
             logging.info(self.actor_mean)
