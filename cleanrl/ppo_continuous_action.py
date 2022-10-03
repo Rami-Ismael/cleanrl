@@ -146,12 +146,12 @@ class Agent(nn.Module):
             )
             self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
             ## Convert the 
-            self.actor.qconfig = torch.ao.quantization.get_default_qconfig(backend)
+            self.actor_mean.qconfig = torch.ao.quantization.get_default_qconfig(backend)
             self.critic.qconfig = torch.ao.quantization.get_default_qconfig(backend)
             logging.info(f" Set qConfig for actor and critic to {self.actor.qconfig}")
             ## Prepare the model for quantize aware training
             logging.info("Prepare the model for quantize aware training")
-            logging.info(self.actor)
+            logging.info(self.actor_mean)
             logging.info(self.critic)
         else:
             self.critic = nn.Sequential(
