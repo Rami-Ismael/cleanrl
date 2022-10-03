@@ -145,6 +145,14 @@ class Agent(nn.Module):
                 torch.ao.quantization.DeQuantStub(),
             )
             self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
+            ## Convert the 
+            self.actor.qconfig = torch.ao.quantization.get_default_qconfig(backend)
+            self.critic.qconfig = torch.ao.quantization.get_default_qconfig(backend)
+            logging.info(f" Set qConfig for actor and critic to {self.actor.qconfig}")
+            ## Prepare the model for quantize aware training
+            logging.info("Prepare the model for quantize aware training")
+            logging.info(self.actor)
+            logging.info(self.critic)
         else:
             self.critic = nn.Sequential(
                 layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
@@ -165,6 +173,7 @@ class Agent(nn.Module):
         self.model_size = self.size_of_model( self.critic
                                              )  + self.size_of_model( self.actor_mean)
         logging.info(f"Model size: {self.model_size}")
+        ## Print out the model 
         
 
     def get_value(self, x):
