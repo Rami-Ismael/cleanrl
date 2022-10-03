@@ -31,6 +31,7 @@ for env in env_list:
             "update-epochs": trial.suggest_int("update-epochs", 1, 1024),
             "norm-adv": trial.suggest_categorical("norm-adv", [True, False]),
             "clip-coef": trial.suggest_uniform("clip-coef", 0.1, 0.999),
+            "clip-vloss":  True,
             "quantize": True,
         },
         pruner=optuna.pruners.MedianPruner(n_startup_trials=0, n_warmup_steps=10),

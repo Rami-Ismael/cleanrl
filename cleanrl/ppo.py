@@ -79,6 +79,8 @@ def parse_args():
     
     # Quantization specific arguments
     parser.add_argument("--quantize", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-weight-bits", type=int, default=8)
+    parser.add_argument("--quantize-activation-bits", type=int, default=8)
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
     logging.info("The Batch Size for ppo on classic control is {}".format(args.batch_size))
@@ -128,7 +130,7 @@ class Agent(nn.Module):
         super().__init__()
         
         self.backend = backends
-        self.size_of_model  = -1
+        self.model_size  = -1
         if  quantize == False:
         
             self.critic = nn.Sequential(
@@ -145,7 +147,7 @@ class Agent(nn.Module):
                 nn.Tanh(),
                 layer_init(nn.Linear(64, envs.single_action_space.n), std=0.01),
             )
-            self.size_of_model = size_of_model(
+            self.model_size = size_of_model(
                 model = self.critic
             ) + size_of_model( self.actor)
             
@@ -169,7 +171,7 @@ class Agent(nn.Module):
                 torch.ao.quantization.DeQuantStub(),
             )
             
-            self.size_of_model = size_of_model(self.critic) + size_of_model(self.actor)
+            self.model_size = size_of_model(self.critic) + size_of_model(self.actor)
             
             self.actor.qconfig = torch.quantization.get_default_qat_qconfig("fbgemm")
             self.critic.qconfig = torch.quantization.get_default_qat_qconfig("fbgemm")
@@ -251,7 +253,10 @@ if __name__ == "__main__":
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
-    agent = Agent(envs , quantize = args.quantize ).to(device)
+    agent = Agent(envs , 
+                  quantize = args.quantize,
+                  
+                  ).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
@@ -406,5 +411,6 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+    ## Convert the 
     envs.close()
     writer.close()

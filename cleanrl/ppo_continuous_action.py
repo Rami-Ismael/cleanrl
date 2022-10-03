@@ -1,5 +1,6 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppo_continuous_actionpy
 import argparse
+import logging
 import os
 import random
 import time
@@ -76,6 +77,8 @@ def parse_args():
     
     ## Quantization
     parser.add_argument("--quantize", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-weight-bits", type=int, default=8)
+    parser.add_argument("--quantize-activation-bits", type=int, default=8)
     
     
     args = parser.parse_args()
@@ -116,10 +119,12 @@ class Agent(nn.Module):
                  envs,
                  quantize:bool = False,
                  backend:str = "fbgemm",
-                 ):
+                 quantize_weight_bits:int = 8,
+                 quantize_activation_bits:int = 8):
         super().__init__()
         self.quantize = quantize
         self.backend = backend
+        self.model_size = - 1
         if quantize:
             self.critic = nn.Sequential(
                 torch.ao.quantization.QuantStub(),
@@ -157,6 +162,9 @@ class Agent(nn.Module):
             )
             self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
         #self.model_size = self.size_of_model( self.critic) + self.size_of_model( self.actor_mean)
+        self.model_size = self.size_of_model( self.critic
+                                             )  + self.size_of_model( self.actor_mean)
+        logging.info(f"Model size: {self.model_size}")
         
 
     def get_value(self, x):
@@ -170,11 +178,14 @@ class Agent(nn.Module):
         if action is None:
             action = probs.sample()
         return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
-    def size_of_model( self  ):
+    def size_of_model( self , model:nn.Sequential  ):
         name_file = "temp.pt"
         torch.save(self.state_dict(), name_file)
         size = os.path.getsize(name_file)
         return size
+    def get_size(self):
+        self.model_size = self.size_of_model( self.critic) + self.size_of_model( self.actor_mean)
+        return self.model_size
     def inference(self, x):
         x = torch.randint(
             np.array(envs.single_observation_space.shape).prod(), (1, 1), dtype=torch.float32
@@ -229,7 +240,10 @@ if __name__ == "__main__":
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
     agent = Agent(envs , 
-                  quantize = args.quantize).to(device)
+                  quantize = args.quantize , 
+                  quantize_weight_bits=args.quantize_weight_bits,
+                  quantize_activation_bits=args.quantize_activation_bits,
+                  ).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
@@ -384,6 +398,11 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
-
+    ## Convert the model to 8 bit model 
+    agent.to("cpu")
+    agent.eval()
+    torch.ao.quantization.convert(agent, inplace=True)
+    logging.info(f"Model converted to 8 bit model and the size of the model  is {agent.get_size()}")
+    logging.info(f"The model is {agent}")
     envs.close()
     writer.close()
