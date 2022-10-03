@@ -32,6 +32,7 @@ for env in env_list:
             "norm-adv": trial.suggest_categorical("norm-adv", [True, False]),
             "clip-coef": trial.suggest_uniform("clip-coef", 0.1, 0.999),
             "clip-vloss":  True,
+            "ent-coef": trial.suggest_uniform("ent-coef", 0.1, 0.999),
             "quantize": True,
         },
         pruner=optuna.pruners.MedianPruner(n_startup_trials=0, n_warmup_steps=10),
@@ -39,7 +40,9 @@ for env in env_list:
         start_trial={
             "learning-rate": 2.5e-4,
             "num-step": 128,
+            "ent-coef": 0.01,
         }
+        wandb_kwargs={"project": "cleanrl", "tags": ["ppo", "classic-controll"]},
     )
     tuner.tune(
         num_trials=1,
