@@ -17,7 +17,7 @@ from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
 
 
-logging.basicConfig(filename="tests.log", level=logging.NOTSET,
+logging.basicConfig(filename="tests.log", level=logging.INFO,
                     format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 def parse_args():
     # fmt: off
@@ -155,6 +155,8 @@ class Agent(nn.Module):
             logging.info("Prepare the model for quantize aware training")
             logging.info(self.actor_mean)
             logging.info(self.critic)
+            torch.ao.quantization.prepare_qat(self.actor_mean, inplace=True)
+            torch.ao.quantization.prepare_qat(self.critic, inplace=True)
         else:
             self.critic = nn.Sequential(
                 layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
