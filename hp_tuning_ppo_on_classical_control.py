@@ -24,6 +24,7 @@ for env in env_list:
             "cuda": True,
             "total-timesteps": 500000,
             "learning-rate": trial.suggest_uniform("learning-rate", 2.5e-5, 0.1),
+            "num-steps": 8192,
             "anneal-lr": trial.suggest_categorical("annealing-lr", [True, False]),
             "gae": trial.suggest_categorical("gae", [True, False]),
             "gamma": trial.suggest_uniform("gamma", 0.1, 0.999),\
@@ -39,12 +40,11 @@ for env in env_list:
         sampler=optuna.samplers.TPESampler(),
         start_trial={
             "learning-rate": 2.5e-4,
-            "num-step": 128,
             "ent-coef": 0.01,
         },
         wandb_kwargs={"project": "cleanrl", "tags": ["ppo", "classic-controll"]},
     )
     tuner.tune(
-        num_trials=1,
-        num_seeds=1,
+        num_trials=50,
+        num_seeds=3,
     )

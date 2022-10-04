@@ -127,7 +127,7 @@ class Tuner:
                             wandb.save('test.log')                        
                         except Exception as e:
                             logging.info(e)
-                            print("Save the test log file failed")
+                            print("Saving the test log file failed")
                             print(e)
                         run.save()
                         run.log({f"{env_id}_return": np.average(metric_values)})

@@ -157,6 +157,9 @@ class Agent(nn.Module):
             logging.info(self.critic)
             torch.ao.quantization.prepare_qat(self.actor_mean, inplace=True)
             torch.ao.quantization.prepare_qat(self.critic, inplace=True)
+            logging.info("After prepare_qat")
+            logging.info(self.actor_mean)
+            logging.info(self.critic)
         else:
             self.critic = nn.Sequential(
                 layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),

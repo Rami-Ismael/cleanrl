@@ -1,6 +1,7 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppopy
 
 import argparse
+from functools import reduce
 import os
 import logging
 import random
@@ -78,9 +79,15 @@ def parse_args():
         help="the target KL divergence threshold")
     
     # Quantization specific arguments
-    parser.add_argument("--quantize", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
-    parser.add_argument("--quantize-weight-bits", type=int, default=8)
-    parser.add_argument("--quantize-activation-bits", type=int, default=8)
+    #parser.add_argument("--quantize", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-weight-bitwdith", type=int, default=8)
+    parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
+    parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
+    parser.add_argument("--quantize-activation-quantize-max", type=int, default= 255)
+    parser.add_argument("--quantize-activation-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
     logging.info("The Batch Size for ppo on classic control is {}".format(args.batch_size))
@@ -124,34 +131,29 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 class Agent(nn.Module):
     def __init__(self, 
                  envs,
-                 quantize:bool = False,
+                 quantize_weight:bool = False,
+                 quantize_weight_bitwdith:int = 8,
+                 quantize_activation:bool = False,
+                 quantize_activation_bitwidth:int = 8,
+                 quantize_activation_quantize_min:int = 0,
+                 quantize_activation_quantize_max:int = 255,
+                 quantize_activation_quantize_reduce_range:bool = False,
+                 quantize_activation_quantize_dtype:str = "quint8",
                  backends:str = "fgbem",
                  ):
         super().__init__()
         
         self.backend = backends
         self.model_size  = -1
-        if  quantize == False:
-        
-            self.critic = nn.Sequential(
-                layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
-                nn.Tanh(),
-                layer_init(nn.Linear(64, 64)),
-                nn.Tanh(),
-                layer_init(nn.Linear(64, 1), std=1.0),
-            )
-            self.actor = nn.Sequential(
-                layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
-                nn.Tanh(),
-                layer_init(nn.Linear(64, 64)),
-                nn.Tanh(),
-                layer_init(nn.Linear(64, envs.single_action_space.n), std=0.01),
-            )
-            self.model_size = size_of_model(
-                model = self.critic
-            ) + size_of_model( self.actor)
-            
-        elif quantize == True:
+        self.quantize_weight = quantize_weight
+        self.quantize_activation = quantize_activation
+        self.quantize_weight_bitwdith = quantize_weight_bitwdith
+        self.quantize_activation_bitwidth = quantize_activation_bitwidth
+        self.quantize_activation_quantize_min = quantize_activation_quantize_min
+        self.quantize_activation_quantize_max = quantize_activation_quantize_max
+        self.quantize_activation_quantize_reduce_range = quantize_activation_quantize_reduce_range
+        self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
+        if quantize_weight or quantize_activation:
             self.critic = nn.Sequential(
                 torch.quantization.QuantStub(),
                 layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
@@ -172,9 +174,10 @@ class Agent(nn.Module):
             )
             
             self.model_size = size_of_model(self.critic) + size_of_model(self.actor)
-            
-            self.actor.qconfig = torch.quantization.get_default_qat_qconfig("fbgemm")
-            self.critic.qconfig = torch.quantization.get_default_qat_qconfig("fbgemm")
+            #https://colab.research.google.com/drive/1O9qRw7s6W4uCNK7iDZxRy2N7uukqaL3d#scrollTo=YjbfEudcrHh5
+            self.my_qconfig =  self.get_quantize_configuration()
+            self.actor.qconfig = self.my_qconfig
+            self.critic.qconfig = self.my_qconfig
             logging.info(f"Set qconfig { self.actor.qconfig} for the model")
             ## Prepare the model for quantize aware trianing
             torch.ao.quantization.prepare_qat(self.actor, inplace=True)
@@ -183,8 +186,23 @@ class Agent(nn.Module):
             logging.info(self.actor)
             logging.info(self.critic)
         else:
-            ValueError("quantize must be True or False")
-        
+            self.critic = nn.Sequential(
+                layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 1), std=1.0),
+            )
+            self.actor = nn.Sequential(
+                layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, envs.single_action_space.n), std=0.01),
+            )
+            self.model_size = size_of_model(
+                model = self.critic
+            ) + size_of_model( self.actor)
             
 
     def get_value(self, x):
@@ -210,14 +228,38 @@ class Agent(nn.Module):
                 layers.append( [x[0] , self.actor[int(x[0]) + 1 ] ] )
         
         torch.ao.quantization.fuse_modules(self.actor, layers, inplace=True)
-        
-        
-        
+    def get_quantize_configuration(self):
+        if self.quantize_weight:
+            if self.quantize_activation:
+                return torch.ao.quantization.QConfig(
+                    activation = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
+                            dtype = self.quantize_activation_quantize_dtype,
+                            reduce_range = self.quantize_activation_quantize_reduce_range,
+                            quant_min = self.quantize_activation_quantize_min,
+                            quant_max = self.quantize_activation_quantize_max,
+                        )
+                    ),
+                    weight = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
+                            reduce_range = self.quantize_activation_quantize_reduce_range,
+                            quant_min = self.quantize_activation_quantize_min,
+                            quant_max = self.quantize_activation_quantize_max,
+                        )
+                    )
+                )
+            else:
+                return torch.ao.quantization.QConfig(
+                    activation = torch.nn.Identity,
+                    weight = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver,
+                            quant_min = -128 ,
+                            quant_max = 127,
+                            dtype = torch.qint8 , 
+                            qscheme = torch.per_tensor_affine,
+                        )
+                )
                 
-                
-        return self
-
-
 if __name__ == "__main__":
     args = parse_args()
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
@@ -254,8 +296,9 @@ if __name__ == "__main__":
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     agent = Agent(envs , 
-                  quantize = args.quantize,
-                  
+                  quantize_weight=args.quantize_weight,
+                  quantize_activation_bitwidth=args.quantize_activation_bitwidth,
+                  quantize_activation=args.quantize_activation,
                   ).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
