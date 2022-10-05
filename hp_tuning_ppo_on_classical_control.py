@@ -24,7 +24,7 @@ for env in env_list:
             "cuda": True,
             "total-timesteps": 500000,
             "learning-rate": trial.suggest_uniform("learning-rate", 2.5e-5, 0.1),
-            "num-steps": 8192,
+            "num-steps": trial.suggest_int("num-steps", 8, 2048),
             "anneal-lr": trial.suggest_categorical("annealing-lr", [True, False]),
             "gae": trial.suggest_categorical("gae", [True, False]),
             "gamma": trial.suggest_uniform("gamma", 0.1, 0.999),\
@@ -34,17 +34,19 @@ for env in env_list:
             "clip-coef": trial.suggest_uniform("clip-coef", 0.1, 0.999),
             "clip-vloss":  True,
             "ent-coef": trial.suggest_uniform("ent-coef", 0.1, 0.999),
+            "vf-coef": trial.suggest_uniform("vf-coef", 0.1, 0.999),
             "quantize": True,
         },
-        pruner=optuna.pruners.MedianPruner(n_startup_trials=0, n_warmup_steps=10),
+        pruner=optuna.pruners.MedianPruner(n_startup_trials=0, n_warmup_steps=0),
         sampler=optuna.samplers.TPESampler(),
         start_trial={
             "learning-rate": 2.5e-4,
             "ent-coef": 0.01,
+            "vf-coef": 0.5,
         },
         wandb_kwargs={"project": "cleanrl", "tags": ["ppo", "classic-controll"]},
     )
     tuner.tune(
-        num_trials=50,
+        num_trials=100,
         num_seeds=3,
     )
