@@ -242,9 +242,9 @@ class Agent(nn.Module):
                     ),
                     weight = torch.ao.quantization.FakeQuantize.with_args(
                         observer = torch.ao.quantization.MovingAverageMinMaxObserver(
-                            reduce_range = self.quantize_activation_quantize_reduce_range,
-                            quant_min = self.quantize_activation_quantize_min,
-                            quant_max = self.quantize_activation_quantize_max,
+                            dtype = torch.quint8,
+                            quant_min = -128,
+                            quant_max = 127,
                         )
                     )
                 )
@@ -256,7 +256,6 @@ class Agent(nn.Module):
                             quant_min = -128 ,
                             quant_max = 127,
                             dtype = torch.qint8 , 
-                            qscheme = torch.per_tensor_affine,
                         )
                 )
                 
