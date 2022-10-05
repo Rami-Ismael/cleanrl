@@ -40,6 +40,8 @@ class Tuner:
         study_name: str = "",
         wandb_kwargs: Dict[str, any] = {},
         start_trial:Dict[str, any] = None,
+        efficnet_timestep_algo: str = "binary_growth",
+        max_total_timesteps: int = 500000,
     ) -> None:
         self.script = script
         self.metric = metric
@@ -72,9 +74,12 @@ class Tuner:
             self.study_name = f"tuner_{int(time.time())}"
         self.wandb_kwargs = wandb_kwargs
         self.start_trial = start_trial
+        self.eficcient_timestep_algo = efficnet_timestep_algo
+        self.max_total_timesteps = max_total_timesteps
 
     def tune(self, num_trials: int, num_seeds: int) -> None:
         def objective(trial: optuna.Trial):
+            print(f"Starting trial {trial.number}")
             params = self.params_fn(trial)
             run = None
             if len(self.wandb_kwargs.keys()) > 0:
@@ -92,8 +97,12 @@ class Tuner:
             for seed in range(num_seeds):
                 normalized_scores = []
                 for env_id in self.target_scores.keys():
-                    print(algo_command)
-                    sys.argv = algo_command + [f"--env-id={env_id}", f"--seed={seed}"]
+                    arguments = [ f"--env={env_id}", f"--seed={seed}"]
+                    if self.eficcient_timestep_algo == "binary_growth":
+                        arguments.append(f"--max_total_timesteps={min(2**trial.number  + 1000, self.max_total_timesteps)}")
+                    if self.wandb_kwargs is None:
+                        arguments.append("--track")
+                    sys.argv = algo_command + arguments
                     logging.info("The program finished running")
                     if "--track" in sys.argv:
                         logging.info("Save the test log file")

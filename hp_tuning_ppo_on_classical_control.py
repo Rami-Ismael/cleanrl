@@ -24,7 +24,7 @@ for env in env_list:
             "cuda": True,
             "total-timesteps": 500000,
             "learning-rate": trial.suggest_uniform("learning-rate", 2.5e-5, 0.1),
-            "num-steps": trial.suggest_int("num-steps", 8, 2048),
+            "num-steps": trial.suggest_int("num-steps", 8, 8192),
             "anneal-lr": trial.suggest_categorical("annealing-lr", [True, False]),
             "gae": trial.suggest_categorical("gae", [True, False]),
             "gamma": trial.suggest_uniform("gamma", 0.1, 0.999),\
@@ -46,6 +46,9 @@ for env in env_list:
             "vf-coef": 0.5,
         },
         wandb_kwargs={"project": "cleanrl", "tags": ["ppo", "classic-controll"]},
+        efficnet_timestep_algo = "binary_growth",
+        max_total_timesteps = 500000,
+        
     )
     tuner.tune(
         num_trials=100,
