@@ -1,3 +1,10 @@
+import sys
+# caution: path[0] is reserved for script path (or '' in REPL)
+sys.path.insert(1, '../cleanrl')
+
+from cleanrl.ppo_functional import ppo_functional
+
+#print( ppo_functional())
 import os
 import runpy
 import sys
@@ -10,7 +17,6 @@ import optuna
 import wandb
 from rich import print
 from tensorboard.backend.event_processing import event_accumulator
-import 
 
 logging.basicConfig(filename="tests.log", level=logging.NOTSET,
                     format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
@@ -28,7 +34,6 @@ class HiddenPrints:
 class Tuner:
     def __init__(
         self,
-        script: str,
         metric: str,
         target_scores: Dict[str, Optional[List[float]]],
         params_fn: Callable[[optuna.Trial], Dict],
@@ -44,7 +49,6 @@ class Tuner:
         efficnet_timestep_algo: str = "binary_growth",
         max_total_timesteps: int = 500000,
     ) -> None:
-        self.script = script
         self.metric = metric
         self.target_scores = target_scores
         if len(self.target_scores) > 1:
@@ -81,77 +85,56 @@ class Tuner:
     def tune(self, num_trials: int, num_seeds: int) -> None:
         def objective(trial: optuna.Trial):
             print(f"Starting trial {trial.number}")
-            params = self.params_fn(trial)
             run = None
-            if len(self.wandb_kwargs.keys()) > 0:
-                run = wandb.init(
-                    **self.wandb_kwargs,
-                    config=params,
-                    name=f"{self.study_name}_{trial.number}",
-                    group=self.study_name,
-                    save_code=True,
-                    reinit=True,
-                )
+            
+            logging.info("The program finished running")
+            if "--track" in sys.argv:
+                logging.info("Save the test log file")
+                wandb.save('test.log')
+                logging.info(" Called Weight and Bias Finished as the run is done")
+                wandb.finish(quiet=True)
+            with HiddenPrints():
+                experiment = runpy.run_path(path_name=self.script, run_name="__main__")
 
-            algo_command = [f"--{key}={value}" for key, value in params.items()]
-            normalized_scoress = []
-            for seed in range(num_seeds):
-                normalized_scores = []
-                for env_id in self.target_scores.keys():
-                    arguments = [ f"--env={env_id}", f"--seed={seed}"]
-                    if self.eficcient_timestep_algo == "binary_growth":
-                        arguments.append(f"--max_total_timesteps={min(2**trial.number  + 1000, self.max_total_timesteps)}")
-                    if self.wandb_kwargs is None:
-                        arguments.append("--track")
-                    sys.argv = algo_command + arguments
-                    logging.info("The program finished running")
-                    if "--track" in sys.argv:
-                        logging.info("Save the test log file")
-                        wandb.save('test.log')
-                        logging.info(" Called Weight and Bias Finished as the run is done")
-                        wandb.finish(quiet=True)
-                    with HiddenPrints():
-                        experiment = runpy.run_path(path_name=self.script, run_name="__main__")
+            # read metric from tensorboard
+            ea = event_accumulator.EventAccumulator(
+                f"runs/{experiment['run_name']}",
+            )
+            ea.Reload()
+            metric_values = [
+                scalar_event.value for scalar_event in ea.Scalars(self.metric)[-self.metric_last_n_average_window :]
+            ]
+            print(
+                f"The average episodic return on {env_id} is {np.average(metric_values)} averaged over the last {self.metric_last_n_average_window} episodes."
+            )
+            if self.target_scores[env_id] is not None:
+                normalized_scores += [
+                    (np.average(metric_values) - self.target_scores[env_id][0])
+                    / (self.target_scores[env_id][1] - self.target_scores[env_id][0])
+                ]
+            else:
+                normalized_scores += [np.average(metric_values)]
+            if run:
+                try:
+                    logging.info("Save the test log file")
+                    wandb.save('test.log')                        
+                except Exception as e:
+                    logging.info(e)
+                    print("Saving the test log file failed")
+                    print(e)
+                run.save()
+                run.log({f"{env_id}_return": np.average(metric_values)})
 
-                    # read metric from tensorboard
-                    ea = event_accumulator.EventAccumulator(
-                        f"runs/{experiment['run_name']}",
-                    )
-                    ea.Reload()
-                    metric_values = [
-                        scalar_event.value for scalar_event in ea.Scalars(self.metric)[-self.metric_last_n_average_window :]
-                    ]
-                    print(
-                        f"The average episodic return on {env_id} is {np.average(metric_values)} averaged over the last {self.metric_last_n_average_window} episodes."
-                    )
-                    if self.target_scores[env_id] is not None:
-                        normalized_scores += [
-                            (np.average(metric_values) - self.target_scores[env_id][0])
-                            / (self.target_scores[env_id][1] - self.target_scores[env_id][0])
-                        ]
-                    else:
-                        normalized_scores += [np.average(metric_values)]
-                    if run:
-                        try:
-                            logging.info("Save the test log file")
-                            wandb.save('test.log')                        
-                        except Exception as e:
-                            logging.info(e)
-                            print("Saving the test log file failed")
-                            print(e)
-                        run.save()
-                        run.log({f"{env_id}_return": np.average(metric_values)})
-
-                normalized_scoress += [normalized_scores]
-                aggregated_normalized_score = self.aggregation_fn(normalized_scores)
-                print(f"The {self.aggregation_type} normalized score is {aggregated_normalized_score} with num_seeds={seed}")
-                trial.report(aggregated_normalized_score, step=seed)
+            normalized_scoress += [normalized_scores]
+            aggregated_normalized_score = self.aggregation_fn(normalized_scores)
+            print(f"The {self.aggregation_type} normalized score is {aggregated_normalized_score} with num_seeds={seed}")
+            trial.report(aggregated_normalized_score, step=seed)
+            if run:
+                run.log({"aggregated_normalized_score": aggregated_normalized_score})
+            if trial.should_prune():
                 if run:
-                    run.log({"aggregated_normalized_score": aggregated_normalized_score})
-                if trial.should_prune():
-                    if run:
-                        run.finish(quiet=True)
-                    raise optuna.TrialPruned()
+                    run.finish(quiet=True)
+                raise optuna.TrialPruned()
 
             if run:
                 run.finish(quiet=True)
