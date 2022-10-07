@@ -1,5 +1,6 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/sac/#sac_continuous_actionpy
 import argparse
+import logging
 import os
 import random
 import time
@@ -140,7 +141,20 @@ class SoftQNetwork(nn.Module):
                 nn.Linear(256, 1),
                 torch.ao.quantization.DeQuantStub()
             )
+            logging.info(self.model)
+            logging.info("Quantize Model")
             ## Prepare Quantize
+            ### Fuse the model because their is relu
+            self.model.fuse_model()
+            ## Set the Quantization Configuration
+            logging.info("Set the Quantization Configuration")
+            logging.info(f"The Quantization Configuration is { self.get_quantization_config()}")
+            self.model.qconfig = self.get_quantization_config()
+            ## Prepare the QAT
+            logging.info("Prepare the QAT")
+            torch.ao.quantization.prepare_qat(self.model, inplace=True)
+            logging.info(f"The model is {self.model}")
+            
         else:
             self.model = nn.Sequential(
                 nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256),
@@ -152,10 +166,12 @@ class SoftQNetwork(nn.Module):
 
     def forward(self, x, a):
         x = torch.cat([x, a], 1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+        return self.model(x)
+    def fuse_model(self):
+        if self.quantize_weight or self.quantize_activation:
+            torch.quantization.fuse_modules(self.model, [['1', '2'], ['3', '4']], inplace=True)
+        else:
+            torch.ao.quantization.fuse_modules(self.model, [['0', '1'], ['2', '3']], inplace=True)
     def get_quantize_configuration(self):
         if self.quantize_weight:
             if self.quantize_activation:
