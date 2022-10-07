@@ -156,8 +156,6 @@ class SoftQNetwork(nn.Module):
             logging.info("Prepare QAT")
             torch.ao.quantization.prepare_qat(self.model, inplace=True)
             logging.info(self.model)
-            
-            
         else:
             self.model = nn.Sequential(
                 nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256),
@@ -209,6 +207,13 @@ class SoftQNetwork(nn.Module):
                             dtype = torch.qint8 , 
                         )
                 )
+    def size_of_model(self):
+        name_file = "temp.pt"
+        torch.save(self.model.state_dict(), name_file)
+        size =  os.path.getsize(name_file)/1e6
+        os.remove(name_file)
+        return size
+    
 
 
 LOG_STD_MAX = 2
@@ -285,11 +290,16 @@ def sac_continuous_action_function(
    trial = optuna.trial.Trial,   
 ):
     args = parse_args()
+    args.learning_starts = learning_starts
+    args.track = track
+    args.policy_lr = policy_lr
+    args.q_lr = q_lr
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run = None
     if args.track:
         import wandb
 
-        wandb.init(
+        run = wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
             sync_tensorboard=True,
@@ -346,6 +356,8 @@ def sac_continuous_action_function(
         handle_timeout_termination=True,
     )
     start_time = time.time()
+    # episode_run
+    episode_run = []
 
     # TRY NOT TO MODIFY: start the game
     obs = envs.reset()
@@ -365,6 +377,8 @@ def sac_continuous_action_function(
             if "episode" in info.keys():
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                trial.report(info["episode"]["r"], global_step)
+                episode_run.append(info["episode"]["r"])
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                 break
 
@@ -444,3 +458,4 @@ def sac_continuous_action_function(
 
     envs.close()
     writer.close()
+    return run , np.average(episode_run)
