@@ -7,6 +7,7 @@ from distutils.util import strtobool
 
 import gym
 import numpy as np
+import optuna
 import pybullet_envs  # noqa
 import torch
 import torch.nn as nn
@@ -67,6 +68,18 @@ def parse_args():
             help="Entropy regularization coefficient.")
     parser.add_argument("--autotune", type=lambda x:bool(strtobool(x)), default=True, nargs="?", const=True,
         help="automatic tuning of the entropy coefficient")
+    
+    ## Quantize Weight
+    parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-weight-bitwdith", type=int, default=8)
+    ## Quantize Activation
+    parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
+    parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
+    parser.add_argument("--quantize-activation-quantize-max", type=int, default= 255)
+    parser.add_argument("--quantize-activation-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
+    
     args = parser.parse_args()
     # fmt: on
     return args
@@ -113,16 +126,70 @@ class SoftQNetwork(nn.Module):
         self.quantize_activation_quantize_max = quantize_activation_quantize_max
         self.quanitize_activation_quantize_reduce_range = quanitize_activation_quantize_reduce_range
         self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
-        self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256)
         self.fc2 = nn.Linear(256, 256)
         self.fc3 = nn.Linear(256, 1)
+        if self.quantize_activation or self.quantize_weight:
+            self.model = nn.Sequential( 
+                                    torch.ao.quantiation.QuantStub(),
+                                    nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256),
+                                    nn.ReLU(), 
+                                    nn.Linear(256, 256),
+                                    nn.ReLU(), 
+                                    nn.Linear(256, 1),
+                                    torch.ao.quantiation.DeQuantStub()
+            )
+            ## Fuse the model
+            ## addd Quantize Configuration
+            ## called prepare QAT
+            
+            
+        else:
+            self.model = nn.Sequential(
+                nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256),
+                nn.ReLU(),
+                nn.Linear(256, 256),
+                nn.ReLU(),
+                nn.Linear(256, 1),
+            )
+            
 
     def forward(self, x, a):
         x = torch.cat([x, a], 1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+        return self.model(x)
+        
+    def fuse(self):
+        layers = []
+        
+    def get_quantize_configuration(self):
+        if self.quantize_weight:
+            if self.quantize_activation:
+                return torch.ao.quantization.QConfig(
+                    activation = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
+                            dtype = self.quantize_activation_quantize_dtype,
+                            reduce_range = self.quantize_activation_quantize_reduce_range,
+                            quant_min = self.quantize_activation_quantize_min,
+                            quant_max = self.quantize_activation_quantize_max,
+                        )
+                    ),
+                    weight = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
+                            dtype = torch.quint8,
+                            quant_min = -128,
+                            quant_max = 127,
+                        )
+                    )
+                )
+            else:
+                return torch.ao.quantization.QConfig(
+                    activation = torch.nn.Identity,
+                    weight = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver,
+                            quant_min = -128 ,
+                            quant_max = 127,
+                            dtype = torch.qint8 , 
+                        )
+                )
 
 
 LOG_STD_MAX = 2
@@ -164,8 +231,40 @@ class Actor(nn.Module):
         mean = torch.tanh(mean) * self.action_scale + self.action_bias
         return action, log_prob, mean
 
+def sac_continuous_action_function(
+    exp_name: str = "sac_continuous",
+    seed:int = 42,
+    torch_deterministic: bool = True,
+    cuda: bool = False,
+    track: bool = False,
+    
+    env_id: str = "HopperBulletEnv-v0",
+    total_timesteps: int = 1000000,
+    buffer_size: int = int(1e6),
+    gamma: float = 0.99,
+    tau: float = 0.005,
+    batch_size: int = 256,
+    exploration_noise: float = 0.1,
+    learning_starts: int = 5e3,
+    policy_lr: float = 3e-4,
+    q_lr: float = 1e-3,
+    policy_frequnecy: int = 2,
+    target_network_frequency: int = 1,
+    noise_clip: float = 0.5,
+    alpha: float = 0.2,
+    autotune: bool = True,
 
-if __name__ == "__main__":
+    quantize_weight:bool = True,
+    quantize_weight_bitwidth:int = 8,
+    quantize_activation:bool = False,
+    quantize_activation_bitwidth:int = 8,
+    quantize_activation_quantize_min:int = 0,
+    quantize_activation_quantize_max:int = 255,
+    quanitize_activation_quantize_reduce_range:bool = False,
+    quantize_activation_quantize_dtype:str = "quint8" , 
+   
+   trial = optuna.trial.Trial,   
+):
     args = parse_args()
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:

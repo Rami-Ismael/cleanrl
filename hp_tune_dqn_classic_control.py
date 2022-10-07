@@ -27,7 +27,8 @@ def objective(trial):
     
     run , average_episode_return = dqn_functional(
         exp_name = "dqn",
-        learninig_rate = learning_rate,
+        learning_rate = learning_rate,
+        total_timesteps = 100,
         track = True , 
         trial = trial
     )
@@ -50,6 +51,6 @@ study.enqueue_trial(start_trial)
 
 study.optimize(
     objective , 
-    n_trials= 100,
+    n_trials= 2,
 )
     

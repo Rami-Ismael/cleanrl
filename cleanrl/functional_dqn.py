@@ -225,7 +225,7 @@ def dqn_functional(
     
     env_id: str = "CartPole-v1",
     total_timesteps: int = 500000,
-    learninig_rate: float = 2.5e-4,
+    learning_rate: float = 2.5e-4,
     buffer_size: int = 10000,
     gamma: float = 0.99,
     target_network_frequency: int = 500,
@@ -256,7 +256,7 @@ def dqn_functional(
     args.env_id = env_id
     # Off_policy RL specific arguments  Deep Q Learning
     args.total_timesteps = total_timesteps
-    args.learninig_rate = learninig_rate
+    args.learning_rate = learning_rate
     args.buffer_size = buffer_size
     args.gamma = gamma
     args.target_network_frequency = target_network_frequency
@@ -290,7 +290,7 @@ def dqn_functional(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
             sync_tensorboard=True,
-            config=vars(args),
+            config={ **vars(args) },
             name=run_name,
             monitor_gym=True,
             save_code=True,
@@ -386,7 +386,7 @@ def dqn_functional(
             old_val = q_network(data.observations).gather(1, data.actions).squeeze()
             loss = F.mse_loss(td_target, old_val)
 
-            if global_step % 100 == 0:
+            if global_step % 1000 == 0:
                 writer.add_scalar("losses/td_loss", loss, global_step)
                 writer.add_scalar("losses/q_values", old_val.mean().item(), global_step)
                 print("SPS:", int(global_step / (time.time() - start_time)))
