@@ -154,7 +154,6 @@ class SoftQNetwork(nn.Module):
             logging.info("Prepare the QAT")
             torch.ao.quantization.prepare_qat(self.model, inplace=True)
             logging.info(f"The model is {self.model}")
-            
         else:
             self.model = nn.Sequential(
                 nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256),
@@ -224,9 +223,27 @@ class Actor(nn.Module):
                  quantize_activation_quantize_max:int = 255,
                  quanitize_activation_quantize_reduce_range:bool = False,
                  quantize_activation_quantize_dtype:str = "quint8" , 
-                 backend:str = 'fbgemm',
           ):
         super().__init__()
+        
+        self.quantize_weight = quantize_weight
+        self.quantize_weight_bitwidth = quantize_weight_bitwidth
+        self.quantize_activation = quantize_activation
+        self.quantize_activation_bitwidth = quantize_activation_bitwidth
+        self.quantize_activation_quantize_min = quantize_activation_quantize_min
+        self.quantize_activation_quantize_max = quantize_activation_quantize_max
+        self.quanitize_activation_quantize_reduce_range = quanitize_activation_quantize_reduce_range
+        self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
+        
+        if self.quantize_activation or self.quantize_weight:
+            self.model = nn.Sequential(
+                torch.ao.quantization.QuantStub(),
+                nn.Linear(np.array(env.single_observation_space.shape).prod(), 256),
+                nn.ReLU(),
+                nn.Linear(256, 256),
+                nn.ReLU(),
+                nn.Linear(256 , )
+            )
         self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod(), 256)
         self.fc2 = nn.Linear(256, 256)
         self.fc_mean = nn.Linear(256, np.prod(env.single_action_space.shape))
@@ -236,15 +253,19 @@ class Actor(nn.Module):
         self.register_buffer("action_bias", torch.FloatTensor((env.action_space.high + env.action_space.low) / 2.0))
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        mean = self.fc_mean(x)
-        log_std = self.fc_logstd(x)
-        log_std = torch.tanh(log_std)
-        log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)  # From SpinUp / Denis Yarats
-
-        return mean, log_std
-
+        x = self.model(x) 
+        if self.quantize_activation or self.quantize_weight:
+            mean = torch.ao.quantization.dequantize(self.fc_mean(x))
+            log_std = self.fc_logstd(x)
+            log_std = torch.ao.quantization(torch.tanh(log_std))
+            log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)  # From SpinUp / Denis Yarats
+            return mean, log_std
+        else:
+            mean = self.fc_mean(x)
+            log_std = self.fc_logstd(x)
+            log_std = torch.tanh(log_std)
+            log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)  # From SpinUp / Denis Yarats
+            return mean, log_std
     def get_action(self, x):
         mean, log_std = self(x)
         std = log_std.exp()
