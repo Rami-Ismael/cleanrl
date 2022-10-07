@@ -67,6 +67,20 @@ def parse_args():
             help="Entropy regularization coefficient.")
     parser.add_argument("--autotune", type=lambda x:bool(strtobool(x)), default=True, nargs="?", const=True,
         help="automatic tuning of the entropy coefficient")
+    
+    # Quantization specific arguments
+    ## Quantize Weight
+    parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-weight-bitwdith", type=int, default=8)
+    ## Quantize Activation
+    parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
+    parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
+    parser.add_argument("--quantize-activation-quantize-max", type=int, default= 255)
+    parser.add_argument("--quantize-activation-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
+    
+ 
     args = parser.parse_args()
     # fmt: on
     return args
@@ -123,6 +137,42 @@ class SoftQNetwork(nn.Module):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
+    def get_quantize_configuration(self):
+        if self.quantize_weight:
+            if self.quantize_activation:
+                return torch.ao.quantization.QConfig(
+                    activation = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
+                            dtype = self.quantize_activation_quantize_dtype,
+                            reduce_range = self.quantize_activation_quantize_reduce_range,
+                            quant_min = self.quantize_activation_quantize_min,
+                            quant_max = self.quantize_activation_quantize_max,
+                        )
+                    ),
+                    weight = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
+                            dtype = torch.quint8,
+                            quant_min = -128,
+                            quant_max = 127,
+                        )
+                    )
+                )
+            else:
+                return torch.ao.quantization.QConfig(
+                    activation = torch.nn.Identity,
+                    weight = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver,
+                            quant_min = -128 ,
+                            quant_max = 127,
+                            dtype = torch.qint8 , 
+                        )
+                )
+    def size_of_model(self):
+        name_file = "temp.pt"
+        torch.save(self.model.state_dict(), name_file)
+        size =  os.path.getsize(name_file)/1e6
+        os.remove(name_file)
+        return size
 
 
 LOG_STD_MAX = 2
@@ -130,7 +180,17 @@ LOG_STD_MIN = -5
 
 
 class Actor(nn.Module):
-    def __init__(self, env):
+    def __init__(self, env , 
+                 quantize_weight:bool = False,
+                 quantize_weight_bitwidth:int = 8,
+                 quantize_activation:bool = False,
+                 quantize_activation_bitwidth:int = 8,
+                 quantize_activation_quantize_min:int = 0,
+                 quantize_activation_quantize_max:int = 255,
+                 quanitize_activation_quantize_reduce_range:bool = False,
+                 quantize_activation_quantize_dtype:str = "quint8" , 
+                 backend:str = 'fbgemm',
+          ):
         super().__init__()
         self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod(), 256)
         self.fc2 = nn.Linear(256, 256)
@@ -163,7 +223,42 @@ class Actor(nn.Module):
         log_prob = log_prob.sum(1, keepdim=True)
         mean = torch.tanh(mean) * self.action_scale + self.action_bias
         return action, log_prob, mean
-
+    def get_quantize_configuration(self):
+        if self.quantize_weight:
+            if self.quantize_activation:
+                return torch.ao.quantization.QConfig(
+                    activation = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
+                            dtype = self.quantize_activation_quantize_dtype,
+                            reduce_range = self.quantize_activation_quantize_reduce_range,
+                            quant_min = self.quantize_activation_quantize_min,
+                            quant_max = self.quantize_activation_quantize_max,
+                        )
+                    ),
+                    weight = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
+                            dtype = torch.quint8,
+                            quant_min = -128,
+                            quant_max = 127,
+                        )
+                    )
+                )
+            else:
+                return torch.ao.quantization.QConfig(
+                    activation = torch.nn.Identity,
+                    weight = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver,
+                            quant_min = -128 ,
+                            quant_max = 127,
+                            dtype = torch.qint8 , 
+                        )
+                )
+    def size_of_model(self):
+        name_file = "temp.pt"
+        torch.save(self.model.state_dict(), name_file)
+        size =  os.path.getsize(name_file)/1e6
+        os.remove(name_file)
+        return size
 
 if __name__ == "__main__":
     args = parse_args()

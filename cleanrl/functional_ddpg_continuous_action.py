@@ -1,4 +1,4 @@
-# docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/sac/#sac_continuous_actionpy
+# docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ddpg/#ddpg_continuous_actionpy
 import argparse
 import os
 import random
@@ -16,11 +16,6 @@ import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
-import logging
-logging.basicConfig(filename="tests.log", level=logging.NOTSET,
-                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s' , 
-                    filemode = "w"
-                    )
 
 def parse_args():
     # fmt: off
@@ -47,6 +42,8 @@ def parse_args():
         help="the id of the environment")
     parser.add_argument("--total-timesteps", type=int, default=1000000,
         help="total timesteps of the experiments")
+    parser.add_argument("--learning-rate", type=float, default=3e-4,
+        help="the learning rate of the optimizer")
     parser.add_argument("--buffer-size", type=int, default=int(1e6),
         help="the replay memory buffer size")
     parser.add_argument("--gamma", type=float, default=0.99,
@@ -57,22 +54,12 @@ def parse_args():
         help="the batch size of sample from the reply memory")
     parser.add_argument("--exploration-noise", type=float, default=0.1,
         help="the scale of exploration noise")
-    parser.add_argument("--learning-starts", type=int, default=5e3,
+    parser.add_argument("--learning-starts", type=int, default=25e3,
         help="timestep to start learning")
-    parser.add_argument("--policy-lr", type=float, default=3e-4,
-        help="the learning rate of the policy network optimizer")
-    parser.add_argument("--q-lr", type=float, default=1e-3,
-        help="the learning rate of the Q network network optimizer")
     parser.add_argument("--policy-frequency", type=int, default=2,
         help="the frequency of training policy (delayed)")
-    parser.add_argument("--target-network-frequency", type=int, default=1, # Denis Yarats' implementation delays this by 2.
-        help="the frequency of updates for the target nerworks")
     parser.add_argument("--noise-clip", type=float, default=0.5,
         help="noise clip parameter of the Target Policy Smoothing Regularization")
-    parser.add_argument("--alpha", type=float, default=0.2,
-            help="Entropy regularization coefficient.")
-    parser.add_argument("--autotune", type=lambda x:bool(strtobool(x)), default=True, nargs="?", const=True,
-        help="automatic tuning of the entropy coefficient")
     
     ## Quantize Weight
     parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
@@ -106,8 +93,82 @@ def make_env(env_id, seed, idx, capture_video, run_name):
 
 
 # ALGO LOGIC: initialize agent here:
-class SoftQNetwork(nn.Module):
-    def __init__(self, env , 
+class QNetwork(nn.Module):
+    def __init__(self, env ,                  
+                 quantize_weight:bool = False,
+                 quantize_weight_bitwidth:int = 8,
+                 quantize_activation:bool = False,
+                 quantize_activation_bitwidth:int = 8,
+                 quantize_activation_quantize_min:int = 0,
+                 quantize_activation_quantize_max:int = 255,
+                 quanitize_activation_quantize_reduce_range:bool = False,
+                 quantize_activation_quantize_dtype:str = "quint8" , 
+                 backend:str = 'fbgemm',
+                 ):
+        super().__init__()
+        ## Save the Param
+        ## Quantize Param
+        ### Quantuze Param Weight
+        self.quantize_weight = quantize_weight
+        self.quantize_weight_bitwidth = quantize_weight_bitwidth
+        ### Quantize Param Activation
+        self.quantize_activation = quantize_activation
+        self.quantize_activation_bitwidth = quantize_activation_bitwidth
+        self.quantize_activation_quantize_min = quantize_activation_quantize_min
+        self.quantize_activation_quantize_max = quantize_activation_quantize_max
+        self.quanitize_activation_quantize_reduce_range = quanitize_activation_quantize_reduce_range
+        self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype):
+        super().__init__()
+        self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256)
+        self.fc2 = nn.Linear(256, 256)
+        self.fc3 = nn.Linear(256, 1)
+
+    def forward(self, x, a):
+        x = torch.cat([x, a], 1)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+    def get_quantize_configuration(self):
+        if self.quantize_weight:
+            if self.quantize_activation:
+                return torch.ao.quantization.QConfig(
+                    activation = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
+                            dtype = self.quantize_activation_quantize_dtype,
+                            reduce_range = self.quantize_activation_quantize_reduce_range,
+                            quant_min = self.quantize_activation_quantize_min,
+                            quant_max = self.quantize_activation_quantize_max,
+                        )
+                    ),
+                    weight = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
+                            dtype = torch.quint8,
+                            quant_min = -128,
+                            quant_max = 127,
+                        )
+                    )
+                )
+            else:
+                return torch.ao.quantization.QConfig(
+                    activation = torch.nn.Identity,
+                    weight = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver,
+                            quant_min = -128 ,
+                            quant_max = 127,
+                            dtype = torch.qint8 , 
+                        )
+                )
+    def size_of_model(self):
+        name_file = "temp.pt"
+        torch.save(self.model.state_dict(), name_file)
+        size =  os.path.getsize(name_file)/1e6
+        os.remove(name_file)
+        return size
+
+
+class Actor(nn.Module):
+    def __init__(self, env ,
                  quantize_weight:bool = False,
                  quantize_weight_bitwidth:int = 8,
                  quantize_activation:bool = False,
@@ -131,122 +192,10 @@ class SoftQNetwork(nn.Module):
         self.quantize_activation_quantize_max = quantize_activation_quantize_max
         self.quanitize_activation_quantize_reduce_range = quanitize_activation_quantize_reduce_range
         self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 1)
-        if self.quantize_activation or self.quantize_weight:
-            self.model = nn.Sequential( 
-                                    torch.ao.quantiation.QuantStub(),
-                                    nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256),
-                                    nn.ReLU(), 
-                                    nn.Linear(256, 256),
-                                    nn.ReLU(), 
-                                    nn.Linear(256, 1),
-                                    torch.ao.quantiation.DeQuantStub()
-            )
-            logging.info(self.model)
-            ## Fuse the model
-            logging.info("Fusing the model")
-            self.fuse_model()
-            logging.info(self.model)
-            ## addd Quantize Configuration
-            quantization_configurations   =  self.add_quantize_configuration()
-            logging.info(quantization_configurations)
-            self.model.qconfig = quantization_configurations
-            ## called prepare QAT
-            logging.info("Prepare QAT")
-            torch.ao.quantization.prepare_qat(self.model, inplace=True)
-            logging.info(self.model)
-        else:
-            self.model = nn.Sequential(
-                nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256),
-                nn.ReLU(),
-                nn.Linear(256, 256),
-                nn.ReLU(),
-                nn.Linear(256, 1),
-            )
-            
-
-    def forward(self, x, a):
-        x = torch.cat([x, a], 1)
-        return self.model(x)
-        
-    def fuse_model(self):
-        layers = list()
-        for index in range( 1, len(self.network) - 2 , 2):
-            layers.append([str(index) , str(index + 1)])
-        logging.info(f"Layers to fuse {layers}")
-        torch.ao.quantization.fuse_modules(self.network, layers, inplace=True)
-        
-    def get_quantize_configuration(self):
-        if self.quantize_weight:
-            if self.quantize_activation:
-                return torch.ao.quantization.QConfig(
-                    activation = torch.ao.quantization.FakeQuantize.with_args(
-                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
-                            dtype = self.quantize_activation_quantize_dtype,
-                            reduce_range = self.quantize_activation_quantize_reduce_range,
-                            quant_min = self.quantize_activation_quantize_min,
-                            quant_max = self.quantize_activation_quantize_max,
-                        )
-                    ),
-                    weight = torch.ao.quantization.FakeQuantize.with_args(
-                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
-                            dtype = torch.quint8,
-                            quant_min = -128,
-                            quant_max = 127,
-                        )
-                    )
-                )
-            else:
-                return torch.ao.quantization.QConfig(
-                    activation = torch.nn.Identity,
-                    weight = torch.ao.quantization.FakeQuantize.with_args(
-                        observer = torch.ao.quantization.MovingAverageMinMaxObserver,
-                            quant_min = -128 ,
-                            quant_max = 127,
-                            dtype = torch.qint8 , 
-                        )
-                )
-    def size_of_model(self):
-        name_file = "temp.pt"
-        torch.save(self.model.state_dict(), name_file)
-        size =  os.path.getsize(name_file)/1e6
-        os.remove(name_file)
-        return size
-    
-
-
-LOG_STD_MAX = 2
-LOG_STD_MIN = -5
-
-
-class Actor(nn.Module):
-    def __init__(self, env ,            
-                 quantize_weight:bool = False,
-                 quantize_weight_bitwidth:int = 8,
-                 quantize_activation:bool = False,
-                 quantize_activation_bitwidth:int = 8,
-                 quantize_activation_quantize_min:int = 0,
-                 quantize_activation_quantize_max:int = 255,
-                 quanitize_activation_quantize_reduce_range:bool = False,
-                 quantize_activation_quantize_dtype:str = "quint8" , 
-                 backend:str = 'fbgemm',):
         super().__init__()
-        ## Quantize Param
-        ### Quantuze Param Weight
-        self.quantize_weight = quantize_weight
-        self.quantize_weight_bitwidth = quantize_weight_bitwidth
-        ### Quantize Param Activation
-        self.quantize_activation = quantize_activation
-        self.quantize_activation_bitwidth = quantize_activation_bitwidth
-        self.quantize_activation_quantize_min = quantize_activation_quantize_min
-        self.quantize_activation_quantize_max = quantize_activation_quantize_max
-        self.quanitize_activation_quantize_reduce_range = quanitize_activation_quantize_reduce_range
-        self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
         self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod(), 256)
         self.fc2 = nn.Linear(256, 256)
-        self.fc_mean = nn.Linear(256, np.prod(env.single_action_space.shape))
-        self.fc_logstd = nn.Linear(256, np.prod(env.single_action_space.shape))
+        self.fc_mu = nn.Linear(256, np.prod(env.single_action_space.shape))
         # action rescaling
         self.register_buffer("action_scale", torch.FloatTensor((env.action_space.high - env.action_space.low) / 2.0))
         self.register_buffer("action_bias", torch.FloatTensor((env.action_space.high + env.action_space.low) / 2.0))
@@ -254,26 +203,8 @@ class Actor(nn.Module):
     def forward(self, x):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
-        mean = self.fc_mean(x)
-        log_std = self.fc_logstd(x)
-        log_std = torch.tanh(log_std)
-        log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)  # From SpinUp / Denis Yarats
-
-        return mean, log_std
-
-    def get_action(self, x):
-        mean, log_std = self(x)
-        std = log_std.exp()
-        normal = torch.distributions.Normal(mean, std)
-        x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1))
-        y_t = torch.tanh(x_t)
-        action = y_t * self.action_scale + self.action_bias
-        log_prob = normal.log_prob(x_t)
-        # Enforcing Action Bound
-        log_prob -= torch.log(self.action_scale * (1 - y_t.pow(2)) + 1e-6)
-        log_prob = log_prob.sum(1, keepdim=True)
-        mean = torch.tanh(mean) * self.action_scale + self.action_bias
-        return action, log_prob, mean
+        x = torch.tanh(self.fc_mu(x))
+        return x * self.action_scale + self.action_bias
     def get_quantize_configuration(self):
         if self.quantize_weight:
             if self.quantize_activation:
@@ -311,47 +242,26 @@ class Actor(nn.Module):
         os.remove(name_file)
         return size
 
-def sac_continuous_action_function(
-    exp_name: str = "sac_continuous",
-    seed:int = 42,
-    torch_deterministic: bool = True,
-    cuda: bool = False,
+
+def ddpg_functional(
+    exp_name: str = "ddpg",
     track: bool = False,
     
-    env_id: str = "HopperBulletEnv-v0",
-    total_timesteps: int = 1000000,
-    buffer_size: int = int(1e6),
-    gamma: float = 0.99,
-    tau: float = 0.005,
-    batch_size: int = 256,
-    exploration_noise: float = 0.1,
-    learning_starts: int = 5e3,
-    policy_lr: float = 3e-4,
-    q_lr: float = 1e-3,
-    policy_frequnecy: int = 2,
-    target_network_frequency: int = 1,
-    noise_clip: float = 0.5,
-    alpha: float = 0.2,
-    autotune: bool = True,
-
-    quantize_weight:bool = True,
-    quantize_weight_bitwidth:int = 8,
-    quantize_activation:bool = False,
-    quantize_activation_bitwidth:int = 8,
-    quantize_activation_quantize_min:int = 0,
-    quantize_activation_quantize_max:int = 255,
-    quanitize_activation_quantize_reduce_range:bool = False,
-    quantize_activation_quantize_dtype:str = "quint8" , 
-   
-   trial = optuna.trial.Trial,   
+    total_time_steps: int = 1000000,
+    learning_rate: float = 3e-4,
+    
+    trial: optuna.trial.Trial = None,
 ):
     args = parse_args()
-    args.learning_starts = learning_starts
+    args.exp_name = exp_name
     args.track = track
-    args.policy_lr = policy_lr
-    args.q_lr = q_lr
+    
+    args.total_timesteps = total_time_steps
+    args.learning_rate = learning_rate
+    
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     run = None
+    episode_return = []
     if args.track:
         import wandb
 
@@ -382,26 +292,16 @@ def sac_continuous_action_function(
     envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
-    max_action = float(envs.single_action_space.high[0])
-
-    actor = Actor(envs).to(device)
-    qf1 = SoftQNetwork(envs).to(device)
-    qf2 = SoftQNetwork(envs).to(device)
-    qf1_target = SoftQNetwork(envs).to(device)
-    qf2_target = SoftQNetwork(envs).to(device)
+    actor = Actor(envs
+                
+                  ).to(device)
+    qf1 = QNetwork(envs).to(device)
+    qf1_target = QNetwork(envs).to(device)
+    target_actor = Actor(envs).to(device)
+    target_actor.load_state_dict(actor.state_dict())
     qf1_target.load_state_dict(qf1.state_dict())
-    qf2_target.load_state_dict(qf2.state_dict())
-    q_optimizer = optim.Adam(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
-    actor_optimizer = optim.Adam(list(actor.parameters()), lr=args.policy_lr)
-
-    # Automatic entropy tuning
-    if args.autotune:
-        target_entropy = -torch.prod(torch.Tensor(envs.single_action_space.shape).to(device)).item()
-        log_alpha = torch.zeros(1, requires_grad=True, device=device)
-        alpha = log_alpha.exp().item()
-        a_optimizer = optim.Adam([log_alpha], lr=args.q_lr)
-    else:
-        alpha = args.alpha
+    q_optimizer = optim.Adam(list(qf1.parameters()), lr=args.learning_rate)
+    actor_optimizer = optim.Adam(list(actor.parameters()), lr=args.learning_rate)
 
     envs.single_observation_space.dtype = np.float32
     rb = ReplayBuffer(
@@ -412,8 +312,6 @@ def sac_continuous_action_function(
         handle_timeout_termination=True,
     )
     start_time = time.time()
-    # episode_run
-    episode_run = []
 
     # TRY NOT TO MODIFY: start the game
     obs = envs.reset()
@@ -422,8 +320,10 @@ def sac_continuous_action_function(
         if global_step < args.learning_starts:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
         else:
-            actions, _, _ = actor.get_action(torch.Tensor(obs).to(device))
-            actions = actions.detach().cpu().numpy()
+            with torch.no_grad():
+                actions = actor(torch.Tensor(obs).to(device))
+                actions += torch.normal(actor.action_bias, actor.action_scale * args.exploration_noise)
+                actions = actions.cpu().numpy().clip(envs.single_action_space.low, envs.single_action_space.high)
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, dones, infos = envs.step(actions)
@@ -433,8 +333,8 @@ def sac_continuous_action_function(
             if "episode" in info.keys():
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                episode_return.append(info["episode"]["r"])
                 trial.report(info["episode"]["r"], global_step)
-                episode_run.append(info["episode"]["r"])
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                 break
 
@@ -452,66 +352,38 @@ def sac_continuous_action_function(
         if global_step > args.learning_starts:
             data = rb.sample(args.batch_size)
             with torch.no_grad():
-                next_state_actions, next_state_log_pi, _ = actor.get_action(data.next_observations)
+                next_state_actions = target_actor(data.next_observations)
                 qf1_next_target = qf1_target(data.next_observations, next_state_actions)
-                qf2_next_target = qf2_target(data.next_observations, next_state_actions)
-                min_qf_next_target = torch.min(qf1_next_target, qf2_next_target) - alpha * next_state_log_pi
-                next_q_value = data.rewards.flatten() + (1 - data.dones.flatten()) * args.gamma * (min_qf_next_target).view(-1)
+                next_q_value = data.rewards.flatten() + (1 - data.dones.flatten()) * args.gamma * (qf1_next_target).view(-1)
 
             qf1_a_values = qf1(data.observations, data.actions).view(-1)
-            qf2_a_values = qf2(data.observations, data.actions).view(-1)
             qf1_loss = F.mse_loss(qf1_a_values, next_q_value)
-            qf2_loss = F.mse_loss(qf2_a_values, next_q_value)
-            qf_loss = qf1_loss + qf2_loss
 
+            # optimize the model
             q_optimizer.zero_grad()
-            qf_loss.backward()
+            qf1_loss.backward()
             q_optimizer.step()
 
-            if global_step % args.policy_frequency == 0:  # TD 3 Delayed update support
-                for _ in range(
-                    args.policy_frequency
-                ):  # compensate for the delay by doing 'actor_update_interval' instead of 1
-                    pi, log_pi, _ = actor.get_action(data.observations)
-                    qf1_pi = qf1(data.observations, pi)
-                    qf2_pi = qf2(data.observations, pi)
-                    min_qf_pi = torch.min(qf1_pi, qf2_pi).view(-1)
-                    actor_loss = ((alpha * log_pi) - min_qf_pi).mean()
+            if global_step % args.policy_frequency == 0:
+                actor_loss = -qf1(data.observations, actor(data.observations)).mean()
+                actor_optimizer.zero_grad()
+                actor_loss.backward()
+                actor_optimizer.step()
 
-                    actor_optimizer.zero_grad()
-                    actor_loss.backward()
-                    actor_optimizer.step()
-
-                    if args.autotune:
-                        with torch.no_grad():
-                            _, log_pi, _ = actor.get_action(data.observations)
-                        alpha_loss = (-log_alpha * (log_pi + target_entropy)).mean()
-
-                        a_optimizer.zero_grad()
-                        alpha_loss.backward()
-                        a_optimizer.step()
-                        alpha = log_alpha.exp().item()
-
-            # update the target networks
-            if global_step % args.target_network_frequency == 0:
-                for param, target_param in zip(qf1.parameters(), qf1_target.parameters()):
+                # update the target network
+                for param, target_param in zip(actor.parameters(), target_actor.parameters()):
                     target_param.data.copy_(args.tau * param.data + (1 - args.tau) * target_param.data)
-                for param, target_param in zip(qf2.parameters(), qf2_target.parameters()):
+                for param, target_param in zip(qf1.parameters(), qf1_target.parameters()):
                     target_param.data.copy_(args.tau * param.data + (1 - args.tau) * target_param.data)
 
             if global_step % 100 == 0:
-                writer.add_scalar("losses/qf1_values", qf1_a_values.mean().item(), global_step)
-                writer.add_scalar("losses/qf2_values", qf2_a_values.mean().item(), global_step)
                 writer.add_scalar("losses/qf1_loss", qf1_loss.item(), global_step)
-                writer.add_scalar("losses/qf2_loss", qf2_loss.item(), global_step)
-                writer.add_scalar("losses/qf_loss", qf_loss.item() / 2.0, global_step)
                 writer.add_scalar("losses/actor_loss", actor_loss.item(), global_step)
-                writer.add_scalar("losses/alpha", alpha, global_step)
+                writer.add_scalar("losses/qf1_values", qf1_a_values.mean().item(), global_step)
                 print("SPS:", int(global_step / (time.time() - start_time)))
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
-                if args.autotune:
-                    writer.add_scalar("losses/alpha_loss", alpha_loss.item(), global_step)
 
     envs.close()
     writer.close()
-    return run , np.average(episode_run)
+    return run , np.average(episode_return)
+
