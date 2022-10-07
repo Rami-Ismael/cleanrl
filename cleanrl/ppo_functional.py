@@ -266,7 +266,10 @@ class Agent(nn.Module):
                 )
                 
 def ppo_functional(
-
+    
+    learning_rate: float = 2.5e-4,
+    quantize_weight: bool = True,
+    quantize_activation: bool = True,
 ):
     args = parse_args()
     
@@ -293,7 +296,7 @@ def ppo_functional(
     if args.track:
         import wandb
 
-        wandb.init(
+        run = wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
             sync_tensorboard=True,
@@ -484,3 +487,4 @@ def ppo_functional(
     ## Convert the 
     envs.close()
     writer.close()
+    return run

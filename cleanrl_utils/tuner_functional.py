@@ -88,19 +88,11 @@ class Tuner:
             
             ## Run the functional RL algorithm
             ppo_functional(
-                seed = 42
-                torch_deteministic = True,
-                cuda = True,
-                track = True,
-                
-                
+                learning_rate = self.params_fn["learning_rate"],
+                quantize_weight = self.params_fn["quantize_weight"],
+                quantize_activation = self.params_fn["quantize_activation"],
+                trial = trial,
             )
-            
-            if "--track" in sys.argv:
-                logging.info("Save the test log file")
-                wandb.save('test.log')
-                logging.info(" Called Weight and Bias Finished as the run is done")
-                wandb.finish(quiet=True)
             with HiddenPrints():
                 experiment = runpy.run_path(path_name=self.script, run_name="__main__")
 

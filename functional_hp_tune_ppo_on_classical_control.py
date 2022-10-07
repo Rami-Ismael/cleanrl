@@ -21,8 +21,6 @@ for env in env_list:
         },
         params_fn=lambda trial: {
             "learning_rate": trial.suggest_uniform("learning_rate", 2.5e-5, 0.1),
-            "quantize-weight":  True,
-            "quantize-activation":  False,
         },
         pruner=optuna.pruners.MedianPruner(n_startup_trials=0, n_warmup_steps=0),
         sampler=optuna.samplers.TPESampler(),
@@ -38,6 +36,6 @@ for env in env_list:
     )
     tuner.tune(
         num_trials=100,
-        num_seeds=3,
+        num_seeds=1,
     )
 
