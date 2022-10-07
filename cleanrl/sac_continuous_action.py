@@ -295,11 +295,51 @@ if __name__ == "__main__":
 
     max_action = float(envs.single_action_space.high[0])
 
-    actor = Actor(envs).to(device)
-    qf1 = SoftQNetwork(envs).to(device)
-    qf2 = SoftQNetwork(envs).to(device)
-    qf1_target = SoftQNetwork(envs).to(device)
-    qf2_target = SoftQNetwork(envs).to(device)
+    actor = Actor(envs , 
+                  quantize_weight = args.quantize_weight,
+                  quantize_weight_bitwidth = args.quantize_weight_bitwidth,
+                  quantize_activation = args.quantize_activation,
+                  quantize_activation_quantize_min = args.quantize_activation_quantize_min,
+                  quantize_activation_quantize_max = args.quantize_activation_quantize_max,
+                  quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
+                  quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
+                  ).to(device)
+    qf1 = SoftQNetwork(envs
+                  quantize_weight = args.quantize_weight,
+                  quantize_weight_bitwidth = args.quantize_weight_bitwidth,
+                  quantize_activation = args.quantize_activation,
+                  quantize_activation_quantize_min = args.quantize_activation_quantize_min,
+                  quantize_activation_quantize_max = args.quantize_activation_quantize_max,
+                  quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
+                  quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
+                  ).to(device)
+    qf2 = SoftQNetwork(envs , 
+                quantize_weight = args.quantize_weight,
+                  quantize_weight_bitwidth = args.quantize_weight_bitwidth,
+                  quantize_activation = args.quantize_activation,
+                  quantize_activation_quantize_min = args.quantize_activation_quantize_min,
+                  quantize_activation_quantize_max = args.quantize_activation_quantize_max,
+                  quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
+                  quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
+                       ).to(device)
+    qf1_target = SoftQNetwork(envs
+                    quantize_weight = args.quantize_weight,
+                  quantize_weight_bitwidth = args.quantize_weight_bitwidth,
+                  quantize_activation = args.quantize_activation,
+                  quantize_activation_quantize_min = args.quantize_activation_quantize_min,
+                  quantize_activation_quantize_max = args.quantize_activation_quantize_max,
+                  quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
+                  quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
+                              ).to(device)
+    qf2_target = SoftQNetwork(envs
+                quantize_weight = args.quantize_weight,
+                  quantize_weight_bitwidth = args.quantize_weight_bitwidth,
+                  quantize_activation = args.quantize_activation,
+                  quantize_activation_quantize_min = args.quantize_activation_quantize_min,
+                  quantize_activation_quantize_max = args.quantize_activation_quantize_max,
+                  quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
+                  quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
+                              ).to(device)
     qf1_target.load_state_dict(qf1.state_dict())
     qf2_target.load_state_dict(qf2.state_dict())
     q_optimizer = optim.Adam(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
