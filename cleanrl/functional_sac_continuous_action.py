@@ -16,6 +16,11 @@ import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
+import logging
+logging.basicConfig(filename="tests.log", level=logging.NOTSET,
+                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s' , 
+                    filemode = "w"
+                    )
 
 def parse_args():
     # fmt: off
@@ -138,9 +143,19 @@ class SoftQNetwork(nn.Module):
                                     nn.Linear(256, 1),
                                     torch.ao.quantiation.DeQuantStub()
             )
+            logging.info(self.model)
             ## Fuse the model
+            logging.info("Fusing the model")
+            self.fuse_model()
+            logging.info(self.model)
             ## addd Quantize Configuration
+            quantization_configurations   =  self.add_quantize_configuration()
+            logging.info(quantization_configurations)
+            self.model.qconfig = quantization_configurations
             ## called prepare QAT
+            logging.info("Prepare QAT")
+            torch.ao.quantization.prepare_qat(self.model, inplace=True)
+            logging.info(self.model)
             
             
         else:
@@ -157,8 +172,12 @@ class SoftQNetwork(nn.Module):
         x = torch.cat([x, a], 1)
         return self.model(x)
         
-    def fuse(self):
-        layers = []
+    def fuse_model(self):
+        layers = list()
+        for index in range( 1, len(self.network) - 2 , 2):
+            layers.append([str(index) , str(index + 1)])
+        logging.info(f"Layers to fuse {layers}")
+        torch.ao.quantization.fuse_modules(self.network, layers, inplace=True)
         
     def get_quantize_configuration(self):
         if self.quantize_weight:
