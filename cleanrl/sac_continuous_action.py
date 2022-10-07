@@ -70,7 +70,7 @@ def parse_args():
     
     # Quantization specific arguments
     ## Quantize Weight
-    parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-weight-bitwdith", type=int, default=8)
     ## Quantize Activation
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
@@ -130,6 +130,25 @@ class SoftQNetwork(nn.Module):
         self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256)
         self.fc2 = nn.Linear(256, 256)
         self.fc3 = nn.Linear(256, 1)
+        if self.quantize_weight or self.quantize_activation:
+            self.model = nn.Sequential(
+                torch.ao.quantization.QuantStub(),
+                nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256),
+                nn.ReLU(),
+                nn.Linear(256, 256),
+                nn.ReLU(),
+                nn.Linear(256, 1),
+                torch.ao.quantization.DeQuantStub()
+            )
+            ## Prepare Quantize
+        else:
+            self.model = nn.Sequential(
+                nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256),
+                nn.ReLU(),
+                nn.Linear(256, 256),
+                nn.ReLU(),
+                nn.Linear(256, 1),
+            )
 
     def forward(self, x, a):
         x = torch.cat([x, a], 1)
