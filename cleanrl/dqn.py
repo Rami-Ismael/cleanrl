@@ -18,6 +18,7 @@ from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
 logging.basicConfig(filename="tests.log", level=logging.NOTSET,
+                    filemode='w',
                     format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 try:
     from quantize_methods import size_of_model

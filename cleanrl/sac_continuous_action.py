@@ -17,6 +17,10 @@ from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
 
+logging.basicConfig(filename="tests.log", level=logging.NOTSET,
+                    filemode='w',
+                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
+
 def parse_args():
     # fmt: off
     parser = argparse.ArgumentParser()
@@ -148,8 +152,8 @@ class SoftQNetwork(nn.Module):
             self.fuse_model()
             ## Set the Quantization Configuration
             logging.info("Set the Quantization Configuration")
-            logging.info(f"The Quantization Configuration is { self.get_quantization_config()}")
-            self.model.qconfig = self.get_quantization_config()
+            logging.info(f"The Quantization Configuration is { self.get_quantize_configuration()}")
+            self.model.qconfig = self.get_quantize_configuration()
             ## Prepare the QAT
             logging.info("Prepare the QAT")
             torch.ao.quantization.prepare_qat(self.model, inplace=True)
@@ -251,7 +255,7 @@ class Actor(nn.Module):
             )
             logging.info(self.model) 
             ##  Fuse the model
-            self.fuse_model()
+            #self.fuse_model()
             logging.info(f"After the model being used" , self.model)
             ## Set the Quantization Configuration
             self.model.qconfig = self.get_quantization_config()
@@ -301,7 +305,7 @@ class Actor(nn.Module):
         log_prob = log_prob.sum(1, keepdim=True)
         mean = torch.tanh(mean) * self.action_scale + self.action_bias
         return action, log_prob, mean
-    def get_quantize_configuration(self):
+    def get_quantization_config(self):
         if self.quantize_weight:
             if self.quantize_activation:
                 return torch.ao.quantization.QConfig(
@@ -339,7 +343,7 @@ class Actor(nn.Module):
         return size
     def fuse_model(self):
         if self.quantize_activation or self.quantize_weight:
-            torch.ao.quantization.prepare_qat(self.model, [ ["1" , "2"] , [ "3" , "4"]] ,  inplace = True)
+            torch.ao.quantization.prepare_qat(self.model ,  [ ["1" , "2"], ["3","4"] ] ,inplace = True )
 
 if __name__ == "__main__":
     args = parse_args()
