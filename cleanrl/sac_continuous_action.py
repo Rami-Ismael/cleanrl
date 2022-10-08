@@ -112,7 +112,7 @@ class SoftQNetwork(nn.Module):
                  quantize_activation_quantize_min:int = 0,
                  quantize_activation_quantize_max:int = 255,
                  quanitize_activation_quantize_reduce_range:bool = False,
-                 quantize_activation_quantize_dtype:str = "quint8" , 
+                 quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
                  backend:str = 'fbgemm',
                  ):
         super().__init__()
@@ -222,7 +222,7 @@ class Actor(nn.Module):
                  quantize_activation_quantize_min:int = 0,
                  quantize_activation_quantize_max:int = 255,
                  quanitize_activation_quantize_reduce_range:bool = False,
-                 quantize_activation_quantize_dtype:str = "quint8" , 
+                 quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
           ):
         super().__init__()
         
@@ -249,9 +249,7 @@ class Actor(nn.Module):
                 nn.ReLU(),
                 nn.Linear(256, 256),
                 nn.ReLU(),
-                
-        self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod(), 256)
-        self.fc2 = nn.Linear(256, 256)
+            )
         self.fc_mean = nn.Linear(256, np.prod(env.single_action_space.shape))
         self.fc_logstd = nn.Linear(256, np.prod(env.single_action_space.shape))
         # action rescaling
@@ -274,7 +272,7 @@ class Actor(nn.Module):
             return mean, log_std
     def get_action(self, x):
         mean, log_std = self(x)
-        std = log_std.exp()
+        std =  log_std.exp()  ## Sample from a norrmal distribution
         normal = torch.distributions.Normal(mean, std)
         x_t = normal.rsample()  # for reparameterization trick (mean + std * N(0,1))
         y_t = torch.tanh(x_t)
@@ -324,6 +322,14 @@ class Actor(nn.Module):
 
 if __name__ == "__main__":
     args = parse_args()
+    ## Convert the string into a dtype
+    if args.quantize_activation_quantize_dtype is not None:
+        if args.quantize_activation_quantize_dtype == "quint8":
+            args.quantize_activation_quantize_dtype = torch.quint8 
+        elif args.quantize_activation_quantize_dtype == "qint8":
+            args.quantize_activation_quantize_dtype = torch.qint8
+        else:
+            raise ValueError(f"Unknown dtype '{torch.dtype}'")
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
@@ -366,7 +372,7 @@ if __name__ == "__main__":
                   quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                   ).to(device)
-    qf1 = SoftQNetwork(envs
+    qf1 = SoftQNetwork(envs , 
                   quantize_weight = args.quantize_weight,
                   quantize_weight_bitwidth = args.quantize_weight_bitwidth,
                   quantize_activation = args.quantize_activation,
@@ -384,7 +390,7 @@ if __name__ == "__main__":
                   quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                        ).to(device)
-    qf1_target = SoftQNetwork(envs
+    qf1_target = SoftQNetwork(envs , 
                     quantize_weight = args.quantize_weight,
                   quantize_weight_bitwidth = args.quantize_weight_bitwidth,
                   quantize_activation = args.quantize_activation,
@@ -393,7 +399,7 @@ if __name__ == "__main__":
                   quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                               ).to(device)
-    qf2_target = SoftQNetwork(envs
+    qf2_target = SoftQNetwork(envs , 
                 quantize_weight = args.quantize_weight,
                   quantize_weight_bitwidth = args.quantize_weight_bitwidth,
                   quantize_activation = args.quantize_activation,

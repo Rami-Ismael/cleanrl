@@ -102,7 +102,7 @@ class QNetwork(nn.Module):
                  quantize_activation_quantize_min:int = 0,
                  quantize_activation_quantize_max:int = 255,
                  quanitize_activation_quantize_reduce_range:bool = False,
-                 quantize_activation_quantize_dtype:str = "quint8" , 
+                 quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
                  backend:str = 'fbgemm',
                  ):
         super().__init__()
@@ -176,7 +176,7 @@ class Actor(nn.Module):
                  quantize_activation_quantize_min:int = 0,
                  quantize_activation_quantize_max:int = 255,
                  quanitize_activation_quantize_reduce_range:bool = False,
-                 quantize_activation_quantize_dtype:str = "quint8" , 
+                 quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
                  backend:str = 'fbgemm',
                  ):
         super().__init__()
