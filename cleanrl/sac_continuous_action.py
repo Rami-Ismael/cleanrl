@@ -253,6 +253,7 @@ class Actor(nn.Module):
                 nn.Linear(256, 256),
                 nn.ReLU(),
             )
+            self.dequantize = torch.ao.quantization.DeQuantStub()
             logging.info(self.model) 
             ##  Fuse the model
             #self.fuse_model()
@@ -281,9 +282,9 @@ class Actor(nn.Module):
     def forward(self, x):
         x = self.model(x) 
         if self.quantize_activation or self.quantize_weight:
-            mean = torch.ao.quantization.dequantize(self.fc_mean(x))
+            mean =  self.dequantize(self.fc_mean(x) )
             log_std = self.fc_logstd(x)
-            log_std = torch.ao.quantization(torch.tanh(log_std))
+            log_std = self.dequantize(torch.tanh(log_std))
             log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)  # From SpinUp / Denis Yarats
             return mean, log_std
         else:
@@ -413,7 +414,7 @@ if __name__ == "__main__":
                   quantize_activation = args.quantize_activation,
                   quantize_activation_quantize_min = args.quantize_activation_quantize_min,
                   quantize_activation_quantize_max = args.quantize_activation_quantize_max,
-                  quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
+                  quantize_activation_quantize_reduce_range = args.quantize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                        ).to(device)
     qf1_target = SoftQNetwork(envs , 
@@ -422,7 +423,7 @@ if __name__ == "__main__":
                   quantize_activation = args.quantize_activation,
                   quantize_activation_quantize_min = args.quantize_activation_quantize_min,
                   quantize_activation_quantize_max = args.quantize_activation_quantize_max,
-                  quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
+                  quantize_activation_quantize_reduce_range = args.quantize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                               ).to(device)
     qf2_target = SoftQNetwork(envs , 
@@ -431,7 +432,7 @@ if __name__ == "__main__":
                   quantize_activation = args.quantize_activation,
                   quantize_activation_quantize_min = args.quantize_activation_quantize_min,
                   quantize_activation_quantize_max = args.quantize_activation_quantize_max,
-                  quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
+                  quantize_activation_quantize_reduce_range = args.quantize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                               ).to(device)
     qf1_target.load_state_dict(qf1.state_dict())
