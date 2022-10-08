@@ -85,8 +85,7 @@ def parse_args():
     #parser.add_argument("--quantize", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     # Quantize Weight 
     parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default = True , nargs="?", const=True)
-    parser.add_argument("--quantize-weight-bitwdith", type=int, default=8)
-    # Quantize Activation
+    parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)    # Quantize Activation
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
     parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
