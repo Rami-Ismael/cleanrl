@@ -17,6 +17,10 @@ from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
 
+logging.basicConfig(filename="tests.log", level=logging.NOTSET,
+                    filemode='w',
+                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
+
 def parse_args():
     # fmt: off
     parser = argparse.ArgumentParser()
@@ -38,7 +42,7 @@ def parse_args():
         help="weather to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments
-    parser.add_argument("--env-id", type=str, default="HopperBulletEnv-v0",
+    parser.add_argument("--env-id", type=str, default="HumanoidBulletEnv-v0",
         help="the id of the environment")
     parser.add_argument("--total-timesteps", type=int, default=1000000,
         help="total timesteps of the experiments")
@@ -72,7 +76,8 @@ def parse_args():
     # Quantization specific arguments
     ## Quantize Weight
     parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
-    parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)    ## Quantize Activation
+    parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)    
+    ## Quantize Activation
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
     parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
@@ -110,7 +115,7 @@ class SoftQNetwork(nn.Module):
                  quantize_activation_bitwidth:int = 8,
                  quantize_activation_quantize_min:int = 0,
                  quantize_activation_quantize_max:int = 255,
-                 quanitize_activation_quantize_reduce_range:bool = False,
+                 quantize_activation_quantize_reduce_range:bool = False,
                  quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
                  backend:str = 'fbgemm',
                  ):
@@ -125,7 +130,7 @@ class SoftQNetwork(nn.Module):
         self.quantize_activation_bitwidth = quantize_activation_bitwidth
         self.quantize_activation_quantize_min = quantize_activation_quantize_min
         self.quantize_activation_quantize_max = quantize_activation_quantize_max
-        self.quanitize_activation_quantize_reduce_range = quanitize_activation_quantize_reduce_range
+        self.quanitize_activation_quantize_reduce_range = quantize_activation_quantize_reduce_range
         self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
         self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256)
         self.fc2 = nn.Linear(256, 256)
@@ -144,11 +149,11 @@ class SoftQNetwork(nn.Module):
             logging.info("Quantize Model")
             ## Prepare Quantize
             ### Fuse the model because their is relu
-            self.model.fuse_model()
+            self.fuse_model()
             ## Set the Quantization Configuration
             logging.info("Set the Quantization Configuration")
-            logging.info(f"The Quantization Configuration is { self.get_quantization_config()}")
-            self.model.qconfig = self.get_quantization_config()
+            logging.info(f"The Quantization Configuration is { self.get_quantize_configuration()}")
+            self.model.qconfig = self.get_quantize_configuration()
             ## Prepare the QAT
             logging.info("Prepare the QAT")
             torch.ao.quantization.prepare_qat(self.model, inplace=True)
@@ -220,7 +225,7 @@ class Actor(nn.Module):
                  quantize_activation_bitwidth:int = 8,
                  quantize_activation_quantize_min:int = 0,
                  quantize_activation_quantize_max:int = 255,
-                 quanitize_activation_quantize_reduce_range:bool = False,
+                 quantize_activation_quantize_reduce_range:bool = False,
                  quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
           ):
         super().__init__()
@@ -231,8 +236,14 @@ class Actor(nn.Module):
         self.quantize_activation_bitwidth = quantize_activation_bitwidth
         self.quantize_activation_quantize_min = quantize_activation_quantize_min
         self.quantize_activation_quantize_max = quantize_activation_quantize_max
-        self.quanitize_activation_quantize_reduce_range = quanitize_activation_quantize_reduce_range
+        self.quanitize_activation_quantize_reduce_range = quantize_activation_quantize_reduce_range
         self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
+        
+        self.fc_mean = nn.Linear(256, np.prod(env.single_action_space.shape))
+        self.fc_logstd = nn.Linear(256, np.prod(env.single_action_space.shape))
+        # action rescaling
+        self.register_buffer("action_scale", torch.FloatTensor((env.action_space.high - env.action_space.low) / 2.0))
+        self.register_buffer("action_bias", torch.FloatTensor((env.action_space.high + env.action_space.low) / 2.0))
         
         if self.quantize_activation or self.quantize_weight:
             self.model = nn.Sequential(
@@ -242,6 +253,23 @@ class Actor(nn.Module):
                 nn.Linear(256, 256),
                 nn.ReLU(),
             )
+            self.dequantize = torch.ao.quantization.DeQuantStub()
+            logging.info(self.model) 
+            ##  Fuse the model
+            #self.fuse_model()
+            logging.info(f"After the model being used" , self.model)
+            ## Set the Quantization Configuration
+            self.model.qconfig = self.get_quantization_config()
+            self.fc_mean.qconfig = self.get_quantization_config()
+            self.fc_logstd.qconfig = self.get_quantization_config()
+            logging.info(f"The Quantization Configuration of the Model is {self.model.qconfig}\n")
+            ## prepare QAT
+            torch.ao.quantization.prepare_qat(self.model, inplace=True)
+            torch.ao.quantization.prepare_qat(self.fc_mean, inplace=True)
+            torch.ao.quantization.prepare_qat(self.fc_logstd, inplace=True)
+            logging.info(f"The Model is {self.model}\n")
+            logging.info(f"The fc_mean is {self.fc_mean}\n")
+            logging.info(f"The fc_mean is {self.fc_logstd}\n")
         else:
             self.model = nn.Sequential(
                 nn.Linear(np.array(env.single_observation_space.shape).prod(), 256),
@@ -249,18 +277,14 @@ class Actor(nn.Module):
                 nn.Linear(256, 256),
                 nn.ReLU(),
             )
-        self.fc_mean = nn.Linear(256, np.prod(env.single_action_space.shape))
-        self.fc_logstd = nn.Linear(256, np.prod(env.single_action_space.shape))
-        # action rescaling
-        self.register_buffer("action_scale", torch.FloatTensor((env.action_space.high - env.action_space.low) / 2.0))
-        self.register_buffer("action_bias", torch.FloatTensor((env.action_space.high + env.action_space.low) / 2.0))
+
 
     def forward(self, x):
         x = self.model(x) 
         if self.quantize_activation or self.quantize_weight:
-            mean = torch.ao.quantization.dequantize(self.fc_mean(x))
+            mean =  self.dequantize(self.fc_mean(x) )
             log_std = self.fc_logstd(x)
-            log_std = torch.ao.quantization(torch.tanh(log_std))
+            log_std = self.dequantize(torch.tanh(log_std))
             log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)  # From SpinUp / Denis Yarats
             return mean, log_std
         else:
@@ -282,7 +306,7 @@ class Actor(nn.Module):
         log_prob = log_prob.sum(1, keepdim=True)
         mean = torch.tanh(mean) * self.action_scale + self.action_bias
         return action, log_prob, mean
-    def get_quantize_configuration(self):
+    def get_quantization_config(self):
         if self.quantize_weight:
             if self.quantize_activation:
                 return torch.ao.quantization.QConfig(
@@ -318,9 +342,21 @@ class Actor(nn.Module):
         size =  os.path.getsize(name_file)/1e6
         os.remove(name_file)
         return size
+    def fuse_model(self):
+        if self.quantize_activation or self.quantize_weight:
+            torch.ao.quantization.prepare_qat(self.model ,  [ ["1" , "2"], ["3","4"] ] ,inplace = True )
 
 def sac_action():
     args = parse_args()
+    print(args)
+    ## Convert the string into a dtype
+    if args.quantize_activation_quantize_dtype is not None:
+        if args.quantize_activation_quantize_dtype == "quint8":
+            args.quantize_activation_quantize_dtype = torch.quint8 
+        elif args.quantize_activation_quantize_dtype == "qint8":
+            args.quantize_activation_quantize_dtype = torch.qint8
+        else:
+            raise ValueError(f"Unknown dtype '{torch.dtype}'")
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
@@ -360,7 +396,7 @@ def sac_action():
                   quantize_activation = args.quantize_activation,
                   quantize_activation_quantize_min = args.quantize_activation_quantize_min,
                   quantize_activation_quantize_max = args.quantize_activation_quantize_max,
-                  quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
+                  quantize_activation_quantize_reduce_range = args.quantize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                   ).to(device)
     qf1 = SoftQNetwork(envs , 
@@ -369,7 +405,7 @@ def sac_action():
                   quantize_activation = args.quantize_activation,
                   quantize_activation_quantize_min = args.quantize_activation_quantize_min,
                   quantize_activation_quantize_max = args.quantize_activation_quantize_max,
-                  quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
+                  quantize_activation_quantize_reduce_range = args.quantize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                   ).to(device)
     qf2 = SoftQNetwork(envs , 
@@ -378,7 +414,7 @@ def sac_action():
                   quantize_activation = args.quantize_activation,
                   quantize_activation_quantize_min = args.quantize_activation_quantize_min,
                   quantize_activation_quantize_max = args.quantize_activation_quantize_max,
-                  quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
+                  quantize_activation_quantize_reduce_range = args.quantize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                        ).to(device)
     qf1_target = SoftQNetwork(envs , 
@@ -387,7 +423,7 @@ def sac_action():
                   quantize_activation = args.quantize_activation,
                   quantize_activation_quantize_min = args.quantize_activation_quantize_min,
                   quantize_activation_quantize_max = args.quantize_activation_quantize_max,
-                  quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
+                  quantize_activation_quantize_reduce_range = args.quantize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                               ).to(device)
     qf2_target = SoftQNetwork(envs , 
@@ -396,7 +432,7 @@ def sac_action():
                   quantize_activation = args.quantize_activation,
                   quantize_activation_quantize_min = args.quantize_activation_quantize_min,
                   quantize_activation_quantize_max = args.quantize_activation_quantize_max,
-                  quanitize_activation_quantize_reduce_range = args.quanitize_activation_quantize_reduce_range,
+                  quantize_activation_quantize_reduce_range = args.quantize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                               ).to(device)
     qf1_target.load_state_dict(qf1.state_dict())
