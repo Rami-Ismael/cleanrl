@@ -16,6 +16,8 @@ import torch.optim as optim
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
 
+from algos.opt import hAdam
+
 logging.basicConfig(filename="tests.log", level=logging.INFO,
                     format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 
@@ -80,14 +82,17 @@ def parse_args():
     
     # Quantization specific arguments
     ## Quantize Weight
-    parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
-    parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)    ## Quantize Activation
+    parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
+    parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)    
+    ## Quantize Activation
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
     parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
     parser.add_argument("--quantize-activation-quantize-max", type=int, default= 255)
     parser.add_argument("--quantize-activation-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
+    ## Other papers algorithm and ideas
+    parser.add_argument("--use-num-adam", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
     logging.info("The Batch Size for ppo on classic control is {}".format(args.batch_size))
@@ -261,6 +266,14 @@ class Agent(nn.Module):
                 
 if __name__ == "__main__":
     args = parse_args()
+    ## Convert the string into a dtype
+    if args.quantize_activation_quantize_dtype is not None:
+        if args.quantize_activation_quantize_dtype == "quint8":
+            args.quantize_activation_quantize_dtype = torch.quint8 
+        elif args.quantize_activation_quantize_dtype == "qint8":
+            args.quantize_activation_quantize_dtype = torch.qint8
+        else:
+            raise ValueError(f"Unknown dtype '{torch.dtype}'")
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb

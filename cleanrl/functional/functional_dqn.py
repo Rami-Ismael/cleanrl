@@ -17,12 +17,13 @@ import torch.nn.functional as F
 import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
+from cleanrl.argument_utils import get_datatype
 
-logging.FileHandler("tests.log", mode='a', encoding=None, delay=False)
+from template import get_quantization_config
+
 logging.basicConfig(filename="tests.log", level=logging.NOTSET,
-                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s' , 
-                    filemode = "w"
-                    )
+                    filemode='w',
+                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 try:
     from quantize_methods import size_of_model
 except ModuleNotFoundError as e:
@@ -82,16 +83,18 @@ def parse_args():
         help="the frequency of training")
     
     # Quantization specific arguments
-    #parser.add_argument("--quantize", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
-    # Quantize Weight 
-    parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default = True , nargs="?", const=True)
-    parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)    # Quantize Activation
+    ## Quantize Weight
+    parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
+    parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)
+    ## Quantize Activation
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
     parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
     parser.add_argument("--quantize-activation-quantize-max", type=int, default= 255)
     parser.add_argument("--quantize-activation-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
+    ## Other papers algorithm and ideas
+    parser.add_argument("--use-num-adam", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     args = parser.parse_args()
     # fmt: on
     return args
@@ -123,7 +126,6 @@ class QNetwork(nn.Module):
                  quantize_activation_quantize_max:int = 255,
                  quanitize_activation_quantize_reduce_range:bool = False,
                  quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
-                 backend:str = 'fbgemm',
                  ):
         super().__init__()
         ## Save the Param
@@ -322,7 +324,7 @@ def dqn_functional(
                          ).to(device)
     logging.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
-    target_network =     QNetwork(
+    target_network =    QNetwork(
                         env = envs,
                         quantize_weight = args.quantize_weight,
                         quantize_weight_bitwidth = args.quantize_weight_bitwidth,

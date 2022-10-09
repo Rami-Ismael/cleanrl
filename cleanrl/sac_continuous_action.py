@@ -16,6 +16,8 @@ import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
+from algos.opt import hAdam
+
 
 logging.basicConfig(filename="tests.log", level=logging.NOTSET,
                     filemode='w',
@@ -44,7 +46,7 @@ def parse_args():
     # Algorithm specific arguments
     parser.add_argument("--env-id", type=str, default="HumanoidBulletEnv-v0",
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=1000000,
+    parser.add_argument("--total-timesteps", type=int, default=100_000,
         help="total timesteps of the experiments")
     parser.add_argument("--buffer-size", type=int, default=int(1e6),
         help="the replay memory buffer size")
@@ -84,6 +86,9 @@ def parse_args():
     parser.add_argument("--quantize-activation-quantize-max", type=int, default= 255)
     parser.add_argument("--quantize-activation-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
+    
+    ## Other papers algorithm and ideas
+    parser.add_argument("--use-num-adam", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     
  
     args = parser.parse_args()
@@ -437,8 +442,15 @@ if __name__ == "__main__":
                               ).to(device)
     qf1_target.load_state_dict(qf1.state_dict())
     qf2_target.load_state_dict(qf2.state_dict())
-    q_optimizer = optim.Adam(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
-    actor_optimizer = optim.Adam(list(actor.parameters()), lr=args.policy_lr)
+    ## Optimizers
+    optimizer =  None
+    if args.use_num_update:
+        optimizer = hAdam
+    else:
+        optimizer = torch.optim.Adam
+        
+    q_optimizer = optimizer(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
+    actor_optimizer = optimizer(list(actor.parameters()), lr=args.policy_lr)
 
     # Automatic entropy tuning
     if args.autotune:

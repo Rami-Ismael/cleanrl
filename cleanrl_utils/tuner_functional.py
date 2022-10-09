@@ -2,7 +2,7 @@ import sys
 # caution: path[0] is reserved for script path (or '' in REPL)
 sys.path.insert(1, '../cleanrl')
 
-from cleanrl.ppo_functional import ppo_functional
+from cleanrl.functional.ppo_functional import ppo_functional
 
 #print( ppo_functional())
 import os

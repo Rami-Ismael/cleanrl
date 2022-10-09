@@ -9,6 +9,7 @@ from distutils.util import strtobool
 import gym
 import numpy as np
 import optuna
+from cleanrl.algos.opt import hAdam
 import pybullet_envs  # noqa
 import torch
 import torch.nn as nn
@@ -46,7 +47,7 @@ def parse_args():
     # Algorithm specific arguments
     parser.add_argument("--env-id", type=str, default="HumanoidBulletEnv-v0",
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=1000000,
+    parser.add_argument("--total-timesteps", type=int, default=100_000,
         help="total timesteps of the experiments")
     parser.add_argument("--buffer-size", type=int, default=int(1e6),
         help="the replay memory buffer size")
@@ -86,6 +87,9 @@ def parse_args():
     parser.add_argument("--quantize-activation-quantize-max", type=int, default= 255)
     parser.add_argument("--quantize-activation-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
+    
+    ## Other papers algorithm and ideas
+    parser.add_argument("--use-num-adam", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     
  
     args = parser.parse_args()
@@ -350,6 +354,7 @@ class Actor(nn.Module):
 
 def sac_functional(
     
+    seed:int = 42,
     track : bool = True , 
     
     total_timesteps : int = 1000 ,
@@ -367,6 +372,7 @@ def sac_functional(
             args.quantize_activation_quantize_dtype = torch.qint8
         else:
             raise ValueError(f"Unknown dtype '{torch.dtype}'")
+    args.seed  = seed
     args.track = track
     args.policy_lr = policy_lr
     args.total_timesteps = total_timesteps
@@ -453,8 +459,15 @@ def sac_functional(
                               ).to(device)
     qf1_target.load_state_dict(qf1.state_dict())
     qf2_target.load_state_dict(qf2.state_dict())
-    q_optimizer = optim.Adam(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
-    actor_optimizer = optim.Adam(list(actor.parameters()), lr=args.policy_lr)
+    ## Optimizers
+    optimizer =  None
+    if args.use_num_update:
+        optimizer = hAdam
+    else:
+        optimizer = torch.optim.Adam
+        
+    q_optimizer = optimizer(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
+    actor_optimizer = optimizer(list(actor.parameters()), lr=args.policy_lr)
 
     # Automatic entropy tuning
     if args.autotune:

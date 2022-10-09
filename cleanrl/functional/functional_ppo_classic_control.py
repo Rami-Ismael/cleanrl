@@ -11,6 +11,7 @@ from distutils.util import strtobool
 
 import gym
 import numpy as np
+import optuna
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -265,12 +266,17 @@ class Agent(nn.Module):
                 )
                 
 def ppo_functional(
-    
+    track:bool  = False,
     learning_rate: float = 2.5e-4,
     quantize_weight: bool = True,
     quantize_activation: bool = True,
+    trial: optuna.Trial = None,
 ):
     args = parse_args()
+    args.track = track
+    args.learning_rate = learning_rate
+    args.quantize_weight = quantize_weight
+    args.quantize_activation = quantize_activation
     
     if args.torch_deteministic:
         torch.backends.cudnn.deterministic = True
@@ -374,6 +380,7 @@ def ppo_functional(
                 if "episode" in item.keys():
                     print(f"global_step={global_step}, episodic_return={item['episode']['r']}")
                     writer.add_scalar("charts/episodic_return", item["episode"]["r"], global_step)
+                    trial.report(item["episode"]["r"], global_step)
                     writer.add_scalar("charts/episodic_length", item["episode"]["l"], global_step)
                     break
 

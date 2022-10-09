@@ -2,7 +2,7 @@ import sys
 # caution: path[0] is reserved for script path (or '' in REPL)
 sys.path.insert(1, '../cleanrl')
 
-from cleanrl.functional_ddpg_continuous_action import ddpg_functional
+from cleanrl.functional.functional_ddpg_continuous_action import ddpg_functional
 
 import os
 import runpy

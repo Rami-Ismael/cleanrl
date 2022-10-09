@@ -8,7 +8,7 @@ from distutils.util import strtobool
 import logging
 
 
-import gym
+#import gym
 import numpy as np
 import torch
 import torch.nn as nn
@@ -16,6 +16,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
+from cleanrl.argument_utils import get_datatype
+
+from torch.ao.quantization.fake_quantize import default_fused_wt_fake_quant , default_weight_fake_quant
+
 
 logging.basicConfig(filename="tests.log", level=logging.NOTSET,
                     filemode='w',
@@ -79,7 +83,18 @@ def parse_args():
         help="the frequency of training")
     
     # Quantization specific arguments
-    parser.add_argument("--quantize", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    ## Quantize Weight
+    parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
+    parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)
+    ## Quantize Activation
+    parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
+    parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
+    parser.add_argument("--quantize-activation-quantize-max", type=int, default= 255)
+    parser.add_argument("--quantize-activation-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
+    ## Other papers algorithm and ideas
+    parser.add_argument("--use-num-adam", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     args = parser.parse_args()
     # fmt: on
     return args
@@ -103,9 +118,27 @@ def make_env(env_id, seed, idx, capture_video, run_name):
 # ALGO LOGIC: initialize agent here:
 class QNetwork(nn.Module):
     def __init__(self, env , 
-                 quantize:bool = False,
-                 backend:str = 'fbgemm',
+                 quantize_weight:bool = False,
+                 quantize_weight_bitwidth:int = 8,
+                 quantize_activation:bool = False,
+                 quantize_activation_bitwidth:int = 8,
+                 quantize_activation_quantize_min:int = 0,
+                 quantize_activation_quantize_max:int = 255,
+                 quanitize_activation_quantize_reduce_range:bool = False,
+                 quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
                  ):
+        ## Save the Param
+        ## Quantize Param
+        ### Quantuze Param Weight
+        self.quantize_weight = quantize_weight
+        self.quantize_weight_bitwidth = quantize_weight_bitwidth
+        ### Quantize Param Activation
+        self.quantize_activation = quantize_activation
+        self.quantize_activation_bitwidth = quantize_activation_bitwidth
+        self.quantize_activation_quantize_min = quantize_activation_quantize_min
+        self.quantize_activation_quantize_max = quantize_activation_quantize_max
+        self.quanitize_activation_quantize_reduce_range = quanitize_activation_quantize_reduce_range
+        self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
         super().__init__()
         self.network = nn.Sequential(
             nn.Linear(np.array(env.single_observation_space.shape).prod(), 120),
@@ -114,11 +147,10 @@ class QNetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(84, env.single_action_space.n),
         )
-        self.quantize = quantize
         logging.info(f"The model is {self.network} GB")  
         logging.info(f"The size of the model is {size_of_model(self.network)}")
         
-        if quantize:
+        if self.quantize_activation or self.quantize_weight:
             self.network = nn.Sequential(
                 torch.ao.quantization.QuantStub(),
                 nn.Linear(np.array(env.single_observation_space.shape).prod(), 120),
@@ -133,7 +165,7 @@ class QNetwork(nn.Module):
             logging.info("Fused model")
             logging.info(self.network)
             ## set the qconfig for the model
-            self.network.qconfig = torch.ao.quantization.get_default_qat_qconfig("fbgemm")
+            self.network.qconfig = self.get_quantization_config()
             logging.info(f"Set qconfig { self.network.qconfig} for the model")
             ## Prepare the model for quantize aware trianing
             torch.ao.quantization.prepare_qat(self.network, inplace=True)
@@ -149,6 +181,31 @@ class QNetwork(nn.Module):
             layers.append([str(index) , str(index + 1)])
         logging.info(f"Layers to fuse {layers}")
         torch.ao.quantization.fuse_modules(self.network, layers, inplace=True)
+    def get_quantization_config(self):
+        if self.quantize_weight:
+            if self.quantize_activation:
+                return torch.ao.quantization.QConfig(
+                    activation = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
+                            dtype = self.quantize_activation_quantize_dtype,
+                            reduce_range = self.quantize_activation_quantize_reduce_range,
+                            quant_min = self.quantize_activation_quantize_min,
+                            quant_max = self.quantize_activation_quantize_max,
+                        )
+                    ),
+                    weight = torch.ao.quantization.FakeQuantize.with_args(
+                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
+                            dtype = torch.quint8,
+                            quant_min = -128,
+                            quant_max = 127,
+                        )
+                    )
+                )
+            else:
+                return torch.ao.quantization.QConfig(
+                    activation = torch.nn.Identity,
+                    weight = default_weight_fake_quant,
+                )
 
 
 def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
@@ -158,6 +215,8 @@ def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
 
 if __name__ == "__main__":
     args = parse_args()
+    
+    args = get_datatype(args)
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
@@ -190,10 +249,22 @@ if __name__ == "__main__":
     envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
-    q_network = QNetwork(envs , quantize = args.quantize).to(device)
+    q_network = QNetwork(
+                        env = envs,
+                        quantize_weight = args.quantize_weight,
+                        quantize_weight_bitwidth = args.quantize_weight_bitwidth,
+                        quantize_activation = args.quantize_activation,
+                        quantize_activation_bitwidth =  args.quantize_activation_bitwidth,
+                         ).to(device)
     logging.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
-    target_network = QNetwork(envs , args.quantize).to(device)
+    target_network =    QNetwork(
+                        env = envs,
+                        quantize_weight = args.quantize_weight,
+                        quantize_weight_bitwidth = args.quantize_weight_bitwidth,
+                        quantize_activation = args.quantize_activation,
+                        quantize_activation_bitwidth =  args.quantize_activation_bitwidth,
+                         ).to(device)
     target_network.load_state_dict(q_network.state_dict())
     logging.info(f"TargetNetwork: {target_network} and the model is on the device: {next(target_network.parameters()).device}")
 
@@ -266,8 +337,11 @@ if __name__ == "__main__":
     ## Convert the model to 8 bit
     q_network.to("cpu")
     q_network.eval()
-    torch.ao.quantization.convert(q_network, inplace=True)
-    logging.info(f"Model converted to 8 bit and the size of the model is {size_of_model(q_network)}")
-    logging.info(f"The q network is {q_network}")
+    try:
+        torch.ao.quantization.convert(q_network, inplace=True)
+        logging.info(f"Model converted to 8 bit and the size of the model is {size_of_model(q_network)}")
+        logging.info(f"The q network is {q_network}")
+    except Exception as e:
+        logging.info(f"Conversion to 8 bit did not happen\n: {e}")
     envs.close()
     writer.close()

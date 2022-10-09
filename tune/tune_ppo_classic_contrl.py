@@ -1,9 +1,8 @@
-from random import random
 import sys
 # caution: path[0] is reserved for script path (or '' in REPL)
 sys.path.insert(1, '../cleanrl')
 
-from cleanrl.functional.functional_sac_continuous_action import sac_functional
+from cleanrl.functional.functional_ppo_classic_control import ppo_functional
 
 import os
 import runpy
@@ -24,23 +23,20 @@ logging.basicConfig(filename="tests.log", level=logging.NOTSET,
 def objective(trial):
     print(f" Strarting trial {trial.number}")
     
-    policy_lr = trial.suggest_uniform("policy_lr", 2.5e-6, 1e-2)
-    seed = random() * 100 + 1
-    run , average_episode_return = sac_functional(
+    learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-1, log=True)
+    
+    run , average_episode_return = ppo_functional(
         
-        seed = int(seed),
-        
-        total_timesteps = 1000000,
-        
-        policy_lr = policy_lr,
-        
+        track = True,
+        learning_rate = learning_rate , 
         trial = trial
+        
     )
     if run:
         run.finish()
     return average_episode_return
     
-# have the seed to be random value between 0 and 10
+
 
 study = optuna.create_study(
     direction="maximize",
@@ -49,12 +45,12 @@ study = optuna.create_study(
     sampler = optuna.samplers.TPESampler(),
 )
 start_trial = {
-    "policy_lr": 3e-4,
+    "learning_rate": .5,
 }
 
 study.enqueue_trial(start_trial)
 
 study.optimize(
     objective , 
-    n_trials= 100,
+    n_trials= 1,
 )
