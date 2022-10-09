@@ -2,7 +2,7 @@ import sys
 # caution: path[0] is reserved for script path (or '' in REPL)
 sys.path.insert(1, '../cleanrl')
 
-from cleanrl.functional.functional_dqn import dqn_functional
+from cleanrl.functional.functional_sac_continuous_action import sac_functional
 
 import os
 import runpy
@@ -23,13 +23,13 @@ logging.basicConfig(filename="tests.log", level=logging.NOTSET,
 def objective(trial):
     print(f" Strarting trial {trial.number}")
     
-    learning_rate = trial.suggest_uniform("learning_rate", 2.5e-6, 0.1)
-    
-    run , average_episode_return = dqn_functional(
-        exp_name = "dqn",
-        learning_rate = learning_rate,
-        total_timesteps = 100,
-        track = True , 
+    policy_lr = trial.suggest_uniform("policy_lr", 2.5e-6, 1e-2)
+    run , average_episode_return = sac_functional(
+        
+        total_timesteps = 1000000,
+        
+        policy_lr = policy_lr,
+        
         trial = trial
     )
     if run:
@@ -40,17 +40,17 @@ def objective(trial):
 
 study = optuna.create_study(
     direction="maximize",
-    pruner = optuna.pruners.MedianPruner(n_startup_trials=5),
+    pruner = optuna.pruners.MedianPruner(n_startup_trials=0 , 
+                                         n_warmup_steps = 5),
     sampler = optuna.samplers.TPESampler(),
 )
 start_trial = {
-    "learning-rate": 2.5e-4,
+    "policy_lr": 3e-4,
 }
 
 study.enqueue_trial(start_trial)
 
 study.optimize(
     objective , 
-    n_trials= 2,
+    n_trials= 100,
 )
-    

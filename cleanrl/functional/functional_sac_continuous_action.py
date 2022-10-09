@@ -8,6 +8,7 @@ from distutils.util import strtobool
 
 import gym
 import numpy as np
+import optuna
 import pybullet_envs  # noqa
 import torch
 import torch.nn as nn
@@ -15,6 +16,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
+import wandb
 
 
 logging.basicConfig(filename="tests.log", level=logging.NOTSET,
@@ -346,7 +348,15 @@ class Actor(nn.Module):
         if self.quantize_activation or self.quantize_weight:
             torch.ao.quantization.prepare_qat(self.model ,  [ ["1" , "2"], ["3","4"] ] ,inplace = True )
 
-def sac_action():
+def sac_functional(
+    
+    track : bool = True , 
+    
+    total_timesteps : int = 1000 ,
+    policy_lr:float=3e-4,
+    
+    trial:optuna.trial.Trial = None
+):
     args = parse_args()
     print(args)
     ## Convert the string into a dtype
@@ -357,11 +367,17 @@ def sac_action():
             args.quantize_activation_quantize_dtype = torch.qint8
         else:
             raise ValueError(f"Unknown dtype '{torch.dtype}'")
+    args.track = track
+    args.policy_lr = policy_lr
+    args.total_timesteps = total_timesteps
+    
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run = None
+    episode_returns = []
     if args.track:
         import wandb
 
-        wandb.init(
+        run = wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
             sync_tensorboard=True,
@@ -477,6 +493,8 @@ def sac_action():
             if "episode" in info.keys():
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                trial.report(float(info["episode"]["r"]), global_step)
+                episode_returns.append(info["episode"]["r"])
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                 break
 
@@ -553,7 +571,8 @@ def sac_action():
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
                 if args.autotune:
                     writer.add_scalar("losses/alpha_loss", alpha_loss.item(), global_step)
-
+    if args.track:
+        run.save("tests.log")
     envs.close()
     writer.close()
-    return run , np.average(episode_run)
+    return run , np.mean(episode_returns)
