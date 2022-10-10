@@ -8,7 +8,8 @@ from distutils.util import strtobool
 import logging
 
 
-#import gym
+import gym
+from algos.opt import hAdam
 import numpy as np
 import torch
 import torch.nn as nn
@@ -94,7 +95,7 @@ def parse_args():
     parser.add_argument("--quantize-activation-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
     ## Other papers algorithm and ideas
-    parser.add_argument("--use-num-adam", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--optimizer" , type=str, default="Adam")
     args = parser.parse_args()
     # fmt: on
     return args
@@ -248,6 +249,13 @@ if __name__ == "__main__":
     # env setup
     envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
+    ## Select the optimzer of your choice
+    optimizer_of_choice = None
+    if args.use_num_adam:
+        optimizer_of_choice = hAdam
+    else:
+        optimizer_of_choice = torch.optim.Adam
+    logging.info(f"Optimizer used --> {optimizer_of_choice} ")
 
     q_network = QNetwork(
                         env = envs,
@@ -257,7 +265,7 @@ if __name__ == "__main__":
                         quantize_activation_bitwidth =  args.quantize_activation_bitwidth,
                          ).to(device)
     logging.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
-    optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
+    optimizer = optimizer_of_choice(q_network.parameters(), lr=args.learning_rate)
     target_network =    QNetwork(
                         env = envs,
                         quantize_weight = args.quantize_weight,
