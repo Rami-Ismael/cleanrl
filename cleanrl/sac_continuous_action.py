@@ -16,7 +16,7 @@ import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
-from algos.opt import hAdam
+from algos.opt import Adan, hAdam
 
 
 logging.basicConfig(filename="tests.log", level=logging.NOTSET,
@@ -88,7 +88,7 @@ def parse_args():
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
     
     ## Other papers algorithm and ideas
-    parser.add_argument("--use-num-adam", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--optimizer" , type=str, default="Adam")
     
  
     args = parser.parse_args()
@@ -261,7 +261,7 @@ class Actor(nn.Module):
             self.dequantize = torch.ao.quantization.DeQuantStub()
             logging.info(self.model) 
             ##  Fuse the model
-            #self.fuse_model()
+            self.fuse_model()
             logging.info(f"After the model being used" , self.model)
             ## Set the Quantization Configuration
             self.model.qconfig = self.get_quantization_config()
@@ -349,7 +349,7 @@ class Actor(nn.Module):
         return size
     def fuse_model(self):
         if self.quantize_activation or self.quantize_weight:
-            torch.ao.quantization.prepare_qat(self.model ,  [ ["1" , "2"], ["3","4"] ] ,inplace = True )
+            torch.ao.quantization.fuse_modules(self.model ,  [ ["1" , "2"], ["3","4"] ] ,inplace = True )
 
 if __name__ == "__main__":
     args = parse_args()
@@ -366,7 +366,7 @@ if __name__ == "__main__":
     if args.track:
         import wandb
 
-        wandb.init(
+        run = wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
             sync_tensorboard=True,
@@ -442,15 +442,20 @@ if __name__ == "__main__":
                               ).to(device)
     qf1_target.load_state_dict(qf1.state_dict())
     qf2_target.load_state_dict(qf2.state_dict())
-    ## Optimizers
-    optimizer =  None
-    if args.use_num_update:
-        optimizer = hAdam
-    else:
-        optimizer = torch.optim.Adam
+    ## Select the optimzer of your choice
+    optimizer_of_choice =  None
+    if args.optimizer == 'Adam':
+        optimizer_of_choice = torch.optim.Adam
+    elif args.optimizer == "hAdam":
+        optimizer_of_choice = hAdam
+    elif args.optimizer == 'Adan':
+        optimizer_of_choice =   Adan
+    
+    logging.info(f"The optimizer {optimizer_of_choice} is being used")    ## Optimizers
+
         
-    q_optimizer = optimizer(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
-    actor_optimizer = optimizer(list(actor.parameters()), lr=args.policy_lr)
+    q_optimizer = optimizer_of_choice(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
+    actor_optimizer = optimizer_of_choice(list(actor.parameters()), lr=args.policy_lr)
 
     # Automatic entropy tuning
     if args.autotune:
@@ -565,6 +570,11 @@ if __name__ == "__main__":
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
                 if args.autotune:
                     writer.add_scalar("losses/alpha_loss", alpha_loss.item(), global_step)
+    
 
     envs.close()
     writer.close()
+    
+    if args.track:
+        run.save("test.log")
+        run.finish()

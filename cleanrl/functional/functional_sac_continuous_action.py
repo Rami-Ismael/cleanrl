@@ -263,7 +263,7 @@ class Actor(nn.Module):
             self.dequantize = torch.ao.quantization.DeQuantStub()
             logging.info(self.model) 
             ##  Fuse the model
-            #self.fuse_model()
+            self.fuse_model()
             logging.info(f"After the model being used" , self.model)
             ## Set the Quantization Configuration
             self.model.qconfig = self.get_quantization_config()
@@ -374,6 +374,7 @@ def sac_functional(
             args.quantize_activation_quantize_dtype = torch.qint8
         else:
             raise ValueError(f"Unknown dtype '{torch.dtype}'")
+    args.exp_name = exp_name
     args.seed  = seed
     args.track = track
     args.policy_lr = policy_lr
@@ -587,4 +588,4 @@ def sac_functional(
     if args.track:
         run.save("tests.log")
         run.finish()
-    return  np.mean(episode_returns) , np.median(episode_returns) , max(episode_returns)
+    return  episode_returns
