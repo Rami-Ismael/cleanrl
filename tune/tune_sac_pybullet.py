@@ -26,19 +26,17 @@ def objective(trial):
     
     policy_lr = trial.suggest_uniform("policy_lr", 2.5e-6, 1e-2)
     seed = random() * 100 + 1
-    run , average_episode_return = sac_functional(
+    average_episode_return  , median , max = sac_functional(
         
         seed = int(seed),
         
-        total_timesteps = 100_000,
+        total_timesteps = 100,
         
         policy_lr = policy_lr,
         
         trial = trial
     )
-    if run:
-        run.finish()
-    return average_episode_return
+    return average_episode_return 
     
 # have the seed to be random value between 0 and 10
 

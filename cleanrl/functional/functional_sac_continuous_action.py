@@ -392,7 +392,6 @@ def sac_functional(
             config=vars(args),
             name=run_name,
             monitor_gym=True,
-            reinit=True,
             save_code=True,
         )
     writer = SummaryWriter(f"runs/{run_name}")
@@ -583,7 +582,7 @@ def sac_functional(
                     writer.add_scalar("losses/alpha_loss", alpha_loss.item(), global_step)
     if args.track:
         run.save("tests.log")
-        run.close()
+        run.finish()
     envs.close()
     writer.close()
-    return  np.mean(episode_returns)
+    return  np.mean(episode_returns) , np.median(episode_returns) , max(episode_returns)
