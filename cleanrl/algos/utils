@@ -1,0 +1,14 @@
+import torch
+
+from cleanrl.algos.opt import Adan, hAdam
+
+
+def select_optmizer(args):
+    if args.optimizer == "Adam":
+        return torch.optim.Adam
+    elif args.optimizer == "hAdam":
+        return hAdam
+    elif args.optimizer == "Adan":
+        return Adan
+    else:
+        raise ValueError(f"{args.optimizer} is not supported")

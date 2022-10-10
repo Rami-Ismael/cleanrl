@@ -1,5 +1,6 @@
 import math
 import torch
+from torch.optim.optimizer import Optimizer
 class hAdam(torch.optim.Adam):
     """
     hAdam (we call it num_Adam is the code)

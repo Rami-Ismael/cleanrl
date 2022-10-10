@@ -356,6 +356,7 @@ class Actor(nn.Module):
 
 def sac_functional(
     
+    exp_name:str = "sac_continuous_actions",
     seed:int = 42,
     track : bool = True , 
     
@@ -577,9 +578,10 @@ def sac_functional(
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
                 if args.autotune:
                     writer.add_scalar("losses/alpha_loss", alpha_loss.item(), global_step)
+
+    envs.close()
+    writer.close()
     if args.track:
         run.save("tests.log")
         run.finish()
-    envs.close()
-    writer.close()
     return  np.mean(episode_returns) , np.median(episode_returns) , max(episode_returns)

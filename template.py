@@ -7,7 +7,7 @@ import time
 from distutils.util import strtobool
 import torch
 
-from cleanrl.algos.opt import hAdam
+from cleanrl.algos.opt import Adan, hAdam
 def parse_args():
     # fmt: off
     parser = argparse.ArgumentParser()
@@ -73,8 +73,6 @@ def parse_args():
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
     
     ## Other papers algorithm and ideas
-    parser.add_argument("--use-num-adam", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
-    ## Other papers algorithm and ideas
     parser.add_argument("--optimizer" , type=str, default="Adam")
     
  
@@ -123,9 +121,11 @@ def add_datatypes(args):
     return args
 
 def select_optmizer(args):
-    if args.optimizer == "ADAM":
+    if args.optimizer == "Adan":
         return torch.optim.Adam
     elif args.optimizer == "hAdam":
         return hAdam
     elif args.optimizer == "Adan":
         return Adan
+    else:
+        ValueError(f"{args.optimizer} is not supported")

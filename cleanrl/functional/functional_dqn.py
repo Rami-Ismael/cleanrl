@@ -17,6 +17,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
+from cleanrl.algos.opt import Adan, hAdam
 from cleanrl.argument_utils import get_datatype
 
 from template import get_quantization_config
@@ -59,7 +60,7 @@ def parse_args():
     # Algorithm specific arguments
     parser.add_argument("--env-id", type=str, default="CartPole-v1",
         help="the id of the environment")
-    parser.add_argument("--total-timesteps", type=int, default=500000,
+    parser.add_argument("--total-timesteps", type=int, default=500_000,
         help="total timesteps of the experiments")
     parser.add_argument("--learning-rate", type=float, default=2.5e-4,
         help="the learning rate of the optimizer")
@@ -94,7 +95,7 @@ def parse_args():
     parser.add_argument("--quantize-activation-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
     ## Other papers algorithm and ideas
-    parser.add_argument("--use-num-adam", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--optimizer" , type=str, default="Adam")
     args = parser.parse_args()
     # fmt: on
     return args
@@ -225,7 +226,7 @@ def dqn_functional(
     track: bool = False,
     
     env_id: str = "CartPole-v1",
-    total_timesteps: int = 500000,
+    total_timesteps: int = 500_000,
     learning_rate: float = 2.5e-4,
     buffer_size: int = 10000,
     gamma: float = 0.99,
@@ -245,6 +246,8 @@ def dqn_functional(
     quantize_activation_quantize_max:int = 255,
     quanitize_activation_quantize_reduce_range:bool = False,
     quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
+    
+    optimizer:str = "Adam",
    
    trial = optuna.trial.Trial,
 ):
@@ -278,6 +281,8 @@ def dqn_functional(
     args.quantize_activation_quantize_max = quantize_activation_quantize_max
     args.quanitize_activation_quantize_reduce_range = quanitize_activation_quantize_reduce_range
     args.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
+    
+    args.optimizer = optimizer
     
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
         
@@ -314,7 +319,13 @@ def dqn_functional(
     # env setup
     envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
-
+    optimizer_of_choice =  None
+    if args.optimizer == 'Adam':
+        optimizer_of_choice = torch.optim.Adam
+    elif args.optimizer == "hAdam":
+        optimizer_of_choice = hAdam
+    elif args.optimizer == 'Adan':
+        optimizer_of_choice =   Adan
     q_network = QNetwork(
                         env = envs,
                         quantize_weight = args.quantize_weight,
@@ -323,7 +334,7 @@ def dqn_functional(
                         quantize_activation_bitwidth =  args.quantize_activation_bitwidth,
                          ).to(device)
     logging.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
-    optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
+    optimizer = optimizer_of_choice(q_network.parameters(), lr=args.learning_rate)
     target_network =    QNetwork(
                         env = envs,
                         quantize_weight = args.quantize_weight,

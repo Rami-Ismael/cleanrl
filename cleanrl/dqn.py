@@ -9,7 +9,7 @@ import logging
 
 
 import gym
-from algos.opt import hAdam
+from algos.opt import Adan, hAdam
 import numpy as np
 import torch
 import torch.nn as nn
@@ -20,6 +20,8 @@ from torch.utils.tensorboard import SummaryWriter
 from cleanrl.argument_utils import get_datatype
 
 from torch.ao.quantization.fake_quantize import default_fused_wt_fake_quant , default_weight_fake_quant
+
+from template import select_optmizer
 
 
 logging.basicConfig(filename="tests.log", level=logging.NOTSET,
@@ -250,12 +252,15 @@ if __name__ == "__main__":
     envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
     ## Select the optimzer of your choice
-    optimizer_of_choice = None
-    if args.use_num_adam:
-        optimizer_of_choice = hAdam
-    else:
+    optimizer_of_choice =  None
+    if args.optimizer == 'Adam':
         optimizer_of_choice = torch.optim.Adam
-    logging.info(f"Optimizer used --> {optimizer_of_choice} ")
+    elif args.optimizer == "hAdam":
+        optimizer_of_choice = hAdam
+    elif args.optimizer == 'Adan':
+        optimizer_of_choice =   Adan
+    
+    logging.info(f"The optimizer {optimizer_of_choice} is being used")
 
     q_network = QNetwork(
                         env = envs,
