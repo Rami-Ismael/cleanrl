@@ -264,7 +264,7 @@ class Actor(nn.Module):
             logging.info(self.model) 
             ##  Fuse the model
             self.fuse_model()
-            logging.info(f"After the model being used" , self.model)
+            logging.info(f"After the model being used {self.model}")
             ## Set the Quantization Configuration
             self.model.qconfig = self.get_quantization_config()
             self.fc_mean.qconfig = self.get_quantization_config()
@@ -389,8 +389,8 @@ def sac_functional(
         run = wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
-            config=vars(args),
             sync_tensorboard=True,
+            config=vars(args),
             name=run_name,
             monitor_gym=True,
             save_code=True,
@@ -503,10 +503,10 @@ def sac_functional(
             if "episode" in info.keys():
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                trial.report(float(info["episode"]["r"]), global_step)
                 if int(info['episode']['r'] % 2) == 0:
                     episode_returns = float(info["episode"]["r"])
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                trial.report(float(info["episode"]["r"]), global_step)
                 break
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `terminal_observation`
