@@ -390,7 +390,10 @@ def sac_functional(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
             config=vars(args),
+            sync_tensorboard=True,
             name=run_name,
+            monitor_gym=True,
+            save_code=True,
         )
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
