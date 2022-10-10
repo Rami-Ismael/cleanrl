@@ -27,15 +27,13 @@ def objective(trial):
     policy_lr = trial.suggest_uniform("policy_lr", 2.5e-6, 0.1)
     q_network_lr = trial.suggest_uniform("q_network_lr", 2.5e-6, 0.1)
     
-    run , average_episode_return = sac_functional(
+    average_episode_return = sac_functional(
         learning_starts = learning_starts,
         policy_lr = policy_lr,
         q_lr = q_network_lr,
         track = True , 
         trial = trial
     )
-    if run:
-        run.finish()
     return average_episode_return
     
 
