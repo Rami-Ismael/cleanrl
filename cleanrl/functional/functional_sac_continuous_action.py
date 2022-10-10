@@ -351,7 +351,7 @@ class Actor(nn.Module):
         return size
     def fuse_model(self):
         if self.quantize_activation or self.quantize_weight:
-            torch.ao.quantization.prepare_qat(self.model ,  [ ["1" , "2"], ["3","4"] ] ,inplace = True )
+            torch.ao.quantization.fuse_modules(self.model ,  [ ["1" , "2"], ["3","4"] ] ,inplace = True )
 
 def sac_functional(
     
