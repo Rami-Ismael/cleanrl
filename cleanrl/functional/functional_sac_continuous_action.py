@@ -390,7 +390,6 @@ def sac_functional(
             entity=args.wandb_entity,
             config=vars(args),
             name=run_name,
-            save_code=True,
         )
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
