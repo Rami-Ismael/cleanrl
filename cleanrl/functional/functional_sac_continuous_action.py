@@ -125,7 +125,6 @@ class SoftQNetwork(nn.Module):
                  quantize_activation_quantize_max:int = 255,
                  quantize_activation_quantize_reduce_range:bool = False,
                  quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
-                 backend:str = 'fbgemm',
                  ):
         super().__init__()
         ## Save the Param
@@ -382,7 +381,7 @@ def sac_functional(
     
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     run = None
-    episode_returns = []
+    episode_returns = -600
     if args.track:
         import wandb
 
@@ -504,7 +503,8 @@ def sac_functional(
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 trial.report(float(info["episode"]["r"]), global_step)
-                episode_returns.append(info["episode"]["r"])
+                if int(info['episode']['r'] % 2) == 0:
+                    episode_returns = float(info["episode"]["r"])
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                 break
 
