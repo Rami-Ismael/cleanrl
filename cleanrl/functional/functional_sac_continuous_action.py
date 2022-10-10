@@ -3,13 +3,15 @@ import argparse
 import logging
 import os
 import random
+import sys
 import time
 from distutils.util import strtobool
 
 import gym
 import numpy as np
 import optuna
-from cleanrl.algos.opt import hAdam
+
+# caution: path[0] is reserved for script path (or '' in REPL)
 import pybullet_envs  # noqa
 import torch
 import torch.nn as nn
@@ -460,14 +462,8 @@ def sac_functional(
     qf1_target.load_state_dict(qf1.state_dict())
     qf2_target.load_state_dict(qf2.state_dict())
     ## Optimizers
-    optimizer =  None
-    if args.use_num_update:
-        optimizer = hAdam
-    else:
-        optimizer = torch.optim.Adam
-        
-    q_optimizer = optimizer(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
-    actor_optimizer = optimizer(list(actor.parameters()), lr=args.policy_lr)
+    q_optimizer = torch.optim.Adam(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
+    actor_optimizer = torch.optim.Adam(list(actor.parameters()), lr=args.policy_lr)
 
     # Automatic entropy tuning
     if args.autotune:
