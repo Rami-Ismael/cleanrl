@@ -10,6 +10,7 @@ from distutils.util import strtobool
 import gym
 import numpy as np
 import optuna
+from cleanrl.algos.opt import Adan, hAdam
 
 # caution: path[0] is reserved for script path (or '' in REPL)
 import pybullet_envs  # noqa
@@ -91,7 +92,7 @@ def parse_args():
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
     
     ## Other papers algorithm and ideas
-    parser.add_argument("--use-num-adam", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--optimizer" , type=str, default="Adam")
     
  
     args = parser.parse_args()
@@ -360,12 +361,14 @@ def sac_functional(
     track : bool = True , 
     
     total_timesteps : int = 1000 ,
+    learning_starts:int = 1000,
     policy_lr:float=3e-4,
+    
+    optimizer:str = "Adam",
     
     trial:optuna.trial.Trial = None
 ):
     args = parse_args()
-    print(args)
     ## Convert the string into a dtype
     if args.quantize_activation_quantize_dtype is not None:
         if args.quantize_activation_quantize_dtype == "quint8":
@@ -379,6 +382,9 @@ def sac_functional(
     args.track = track
     args.policy_lr = policy_lr
     args.total_timesteps = total_timesteps
+    args.learning_starts = learning_starts
+    args.optimzier = optimizer
+    print(args)
     
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     run = None
@@ -462,9 +468,17 @@ def sac_functional(
                               ).to(device)
     qf1_target.load_state_dict(qf1.state_dict())
     qf2_target.load_state_dict(qf2.state_dict())
-    ## Optimizers
-    q_optimizer = torch.optim.Adam(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
-    actor_optimizer = torch.optim.Adam(list(actor.parameters()), lr=args.policy_lr)
+    ## Select the optimzer of your choice
+    optimizer_of_choice =  None
+    if args.optimizer == 'Adam':
+        optimizer_of_choice = torch.optim.Adam
+    elif args.optimizer == "hAdam":
+        optimizer_of_choice = hAdam
+    elif args.optimizer == 'Adan':
+        optimizer_of_choice =   Adan
+    logging.info(f"The optimizer {optimizer_of_choice} is being used")    ## Optimizers
+    q_optimizer = optimizer_of_choice(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
+    actor_optimizer = optimizer_of_choice(list(actor.parameters()), lr=args.policy_lr)
 
     # Automatic entropy tuning
     if args.autotune:

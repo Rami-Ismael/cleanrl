@@ -26,16 +26,14 @@ def objective(trial):
     
     policy_lr = trial.suggest_uniform("policy_lr", 2.5e-6, 1e-2)
     optimizer = trial.suggest_categorical('optimizer', ['Adam', 'hAdam' , "Adan"])
+    print(optimizer)
     seed = random() * 100 + 1
     average_episode_return    = sac_functional(
-        
         seed = int(seed),
-        
-        total_timesteps = 100_000,
-        
+        total_timesteps = 1000,
         policy_lr = policy_lr,
-        
-        optimizer=optimizer  , 
+        track = False , 
+        optimizer = optimizer,
         trial = trial
     )
     return average_episode_return 

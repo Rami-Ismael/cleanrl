@@ -3,11 +3,16 @@ import argparse
 import logging
 import os
 import random
+import sys
 import time
 from distutils.util import strtobool
 
 import gym
 import numpy as np
+import optuna
+from cleanrl.algos.opt import Adan, hAdam
+
+# caution: path[0] is reserved for script path (or '' in REPL)
 import pybullet_envs  # noqa
 import torch
 import torch.nn as nn
@@ -15,8 +20,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
-
-from algos.opt import Adan, hAdam
+import wandb
 
 
 logging.basicConfig(filename="tests.log", level=logging.NOTSET,
@@ -122,7 +126,6 @@ class SoftQNetwork(nn.Module):
                  quantize_activation_quantize_max:int = 255,
                  quantize_activation_quantize_reduce_range:bool = False,
                  quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
-                 backend:str = 'fbgemm',
                  ):
         super().__init__()
         ## Save the Param
@@ -262,7 +265,7 @@ class Actor(nn.Module):
             logging.info(self.model) 
             ##  Fuse the model
             self.fuse_model()
-            logging.info(f"After the model being used" , self.model)
+            logging.info(f"After the model being used {self.model}")
             ## Set the Quantization Configuration
             self.model.qconfig = self.get_quantization_config()
             self.fc_mean.qconfig = self.get_quantization_config()
@@ -351,7 +354,20 @@ class Actor(nn.Module):
         if self.quantize_activation or self.quantize_weight:
             torch.ao.quantization.fuse_modules(self.model ,  [ ["1" , "2"], ["3","4"] ] ,inplace = True )
 
-if __name__ == "__main__":
+def sac_functional(
+    
+    exp_name:str = "sac_continuous_actions",
+    seed:int = 42,
+    track : bool = True , 
+    
+    total_timesteps : int = 1000 ,
+    learning_starts:int = 1000,
+    policy_lr:float=3e-4,
+    
+    optimizer:str = "Adam",
+    
+    trial:optuna.trial.Trial = None
+):
     args = parse_args()
     ## Convert the string into a dtype
     if args.quantize_activation_quantize_dtype is not None:
@@ -361,8 +377,18 @@ if __name__ == "__main__":
             args.quantize_activation_quantize_dtype = torch.qint8
         else:
             raise ValueError(f"Unknown dtype '{torch.dtype}'")
+    args.exp_name = exp_name
+    args.seed  = seed
+    args.track = track
+    args.policy_lr = policy_lr
+    args.total_timesteps = total_timesteps
+    args.learning_starts = learning_starts
+    args.optimzier = optimizer
     print(args)
+    
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run = None
+    episode_returns = -600
     if args.track:
         import wandb
 
@@ -375,11 +401,6 @@ if __name__ == "__main__":
             monitor_gym=True,
             save_code=True,
         )
-    writer = SummaryWriter(f"runs/{run_name}")
-    writer.add_text(
-        "hyperparameters",
-        "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
-    )
 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
@@ -450,10 +471,7 @@ if __name__ == "__main__":
         optimizer_of_choice = hAdam
     elif args.optimizer == 'Adan':
         optimizer_of_choice =   Adan
-    
     logging.info(f"The optimizer {optimizer_of_choice} is being used")    ## Optimizers
-
-        
     q_optimizer = optimizer_of_choice(list(qf1.parameters()) + list(qf2.parameters()), lr=args.q_lr)
     actor_optimizer = optimizer_of_choice(list(actor.parameters()), lr=args.policy_lr)
 
@@ -493,8 +511,12 @@ if __name__ == "__main__":
         for info in infos:
             if "episode" in info.keys():
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                if int(info['episode']['r'] % 2) == 0:
+                    episode_returns = float(info["episode"]["r"])
+                if args.track:
+                    run.log("charts/episodic_return", info["episode"]["r"], global_step)
+                    run.log("charts/episode_length", info["episode"]["l"], global_step)
+                trial.report(float(info["episode"]["r"]), global_step)
                 break
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `terminal_observation`
@@ -559,22 +581,21 @@ if __name__ == "__main__":
                     target_param.data.copy_(args.tau * param.data + (1 - args.tau) * target_param.data)
 
             if global_step % 100 == 0:
-                writer.add_scalar("losses/qf1_values", qf1_a_values.mean().item(), global_step)
-                writer.add_scalar("losses/qf2_values", qf2_a_values.mean().item(), global_step)
-                writer.add_scalar("losses/qf1_loss", qf1_loss.item(), global_step)
-                writer.add_scalar("losses/qf2_loss", qf2_loss.item(), global_step)
-                writer.add_scalar("losses/qf_loss", qf_loss.item() / 2.0, global_step)
-                writer.add_scalar("losses/actor_loss", actor_loss.item(), global_step)
-                writer.add_scalar("losses/alpha", alpha, global_step)
                 print("SPS:", int(global_step / (time.time() - start_time)))
-                writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
-                if args.autotune:
-                    writer.add_scalar("losses/alpha_loss", alpha_loss.item(), global_step)
-    
+                if args.autotune and args.track:
+                    run.log("losses/alpha_loss", alpha_loss.item(), global_step)
+                if args.track:
+                    run.log("losses/qf1_values", qf1_a_values.mean().item(), global_step)
+                    run.log("losses/qf2_values", qf2_a_values.mean().item(), global_step)
+                    run.log("losses/qf1_loss", qf1_loss.item(), global_step)
+                    run.log("losses/qf2_loss", qf2_loss.item(), global_step)
+                    run.log("losses/qf_loss", qf_loss.item() / 2.0, global_step)
+                    run.log("losses/actor_loss", actor_loss.item(), global_step)
+                    run.log("losses/alpha", alpha, global_step)
+                    run.log("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
     envs.close()
-    writer.close()
-    
     if args.track:
-        run.save("test.log")
+        run.save("tests.log")
         run.finish()
+    return  episode_returns
