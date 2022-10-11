@@ -383,7 +383,7 @@ def sac_functional(
     args.policy_lr = policy_lr
     args.total_timesteps = total_timesteps
     args.learning_starts = learning_starts
-    args.optimzier = optimizer
+    args.optimizer = optimizer
     print(args)
     
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
@@ -592,7 +592,7 @@ def sac_functional(
                     run.log({"losses/qf_loss":qf_loss.item() / 2.0}, step = global_step)
                     run.log({"losses/actor_loss":actor_loss.item()} ,step = global_step)
                     run.log({"losses/alpha":alpha}, step = global_step)
-                    run.log({"charts/SPS":int(global_step / (time.time() - start_time))}, step = global_step)
+                    run.log({"chart/SPS":int(global_step / (time.time() - start_time))}, step = global_step)
 
     envs.close()
     if args.track:
