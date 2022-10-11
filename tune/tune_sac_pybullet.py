@@ -26,6 +26,7 @@ def objective(trial):
     
     policy_lr = trial.suggest_uniform("policy_lr", 2.5e-6, 1e-2)
     optimizer = trial.suggest_categorical('optimizer', ['Adam', 'hAdam' , "Adan"])
+    batch_size = trial.suggest_categorical('batch_size', [256, 512, 1024 , 2048  , 4096 , 8192 , 16384])
     seed = random() * 100 + 1
     average_episode_return    = sac_functional(
         

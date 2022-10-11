@@ -64,6 +64,10 @@ def parse_args():
     ## Quantize Weight
     parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)
+    parser.add_argument("--quantize-weight-quantize-min", type=int, default=-127)
+    parser.add_argument("--quantize-weight-quantize-max", type=int, default=126)
+    parser.add_argument("--quantize-weight-reduce-range", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=False)
+    parser.add_argument("--quantize-weight-dtype", type=str, default="qint", nargs="?", const=None)
     ## Quantize Activation
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
@@ -81,28 +85,28 @@ def parse_args():
     return args
 
 def get_quantization_config(self):
-    activation = torch.nn.Identity()
-    weight = torch.nn.Identity()
-    if self.quantize_weight:
-        fq_weights = torch.quantization.FakeQuantize.with_args(
-                    observer = torch.quantization.MovingAveragePerChannelMinMaxObserver , 
-                    quant_min=-(2 ** self.quantize_weight_bitwidth) // 2,
-                    quant_max=(2 ** self.quantize_weight_bitwidth) // 2 - 1,
-                    dtype=torch.qint8, 
-                    qscheme=torch.per_tensor_affine, 
-                    reduce_range=False)
-        if self.quantize_activation:
-            fq_activation = torch.quantization.FakeQuantize.with_args(
-                observer = torch.quantization.MovingAveragePerChannelMinMaxObserver , 
-                    quant_min=self.quantize_activation_quantize_min,
-                    quant_max=self.quantize_activation_quantize_max,
-                    dtype = getattr(torch, self.quantize_activation_quantize_dtype), 
-                    qscheme=torch.per_tensor_affine, 
-                    reduce_range=self.quanitize_activation_quantize_reduce_range
-                )
-            return torch.ao.quantization.QConfig( activation = fq_activation, weight = fq_weights )
-        else:
-            return torch.ao.quantization.QConfig(activation = activation, weight = fq_weights)
+        activation = torch.nn.Identity()
+        weight = torch.nn.Identity()
+        if self.quantize_weight:
+            fq_weights = torch.quantization.FakeQuantize.with_args(
+                        observer = torch.quantization.MovingAverageMinMaxObserver , 
+                        quant_min=-(2 ** self.quantize_weight_bitwidth) // 2,
+                        quant_max=(2 ** self.quantize_weight_bitwidth) // 2 - 1,
+                        dtype=torch.qint8, 
+                        qscheme=torch.per_tensor_affine, 
+                        reduce_range=False)
+            if self.quantize_activation:
+                fq_activation = torch.quantization.FakeQuantize.with_args(
+                    observer = torch.quantization.MovingAverageMinMaxObserver , 
+                        quant_min=self.quantize_activation_quantize_min,
+                        quant_max=self.quantize_activation_quantize_max,
+                        dtype = getattr(torch, self.quantize_activation_quantize_dtype), 
+                        qscheme=torch.per_tensor_affine, 
+                        reduce_range=self.quanitize_activation_quantize_reduce_range
+                    )
+                return torch.ao.quantization.QConfig( activation = fq_activation, weight = fq_weights )
+            else:
+                return torch.ao.quantization.QConfig(activation = activation, weight = fq_weights)
         
 def add_datatypes(args):
     if args.quantize_activation_quantize_dtype is not None:
