@@ -33,7 +33,7 @@ def objective(trial):
         seed = int(seed),
         
         total_timesteps = 100_000,
-        
+        batch_size = batch_size,
         policy_lr = policy_lr,
         track = False ,  
         optimizer=optimizer  , 

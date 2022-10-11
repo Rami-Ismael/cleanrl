@@ -285,7 +285,6 @@ class Actor(nn.Module):
 
     def forward(self, x):
         x = self.model(x) 
-        print(f" The output of the model is {x} and has the shape {x.shape}")
         if self.quantize_activation or self.quantize_weight:
             mean =  self.dequantize(self.fc_mean(x) )
             log_std = self.fc_logstd(x)
@@ -351,6 +350,7 @@ def sac_functional(
     track : bool = True , 
     
     total_timesteps : int = 1000 ,
+    batch_size : int = 256,
     learning_starts:int = 1000,
     policy_lr:float=3e-4,
     
@@ -366,6 +366,7 @@ def sac_functional(
     args.total_timesteps = total_timesteps
     args.learning_starts = learning_starts
     args.optimizer = optimizer
+    args.batch_size = batch_size
     print(args)
     
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
@@ -496,8 +497,8 @@ def sac_functional(
                 if int(info['episode']['r'] % 2) == 0:
                     episode_returns = float(info["episode"]["r"])
                 if args.track:
-                    run.log({"chart/episodic_return": info["episode"]["r"]} , step = global_step)
-                    run.log({"chart/episodic_return": info["episode"]["r"]} , step = global_step)
+                    run.log({"charts/episodic_return": info["episode"]["r"]} , step = global_step)
+                    run.log({"charts/episodic_return": info["episode"]["r"]} , step = global_step)
                 trial.report(float(info["episode"]["r"]), global_step)
                 break
 
@@ -574,7 +575,7 @@ def sac_functional(
                     run.log({"losses/qf_loss":qf_loss.item() / 2.0}, step = global_step)
                     run.log({"losses/actor_loss":actor_loss.item()} ,step = global_step)
                     run.log({"losses/alpha":alpha}, step = global_step)
-                    run.log({"chart/SPS":int(global_step / (time.time() - start_time))}, step = global_step)
+                    run.log({"charts/SPS":int(global_step / (time.time() - start_time))}, step = global_step)
 
     envs.close()
     if args.track:
