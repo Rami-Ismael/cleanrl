@@ -35,7 +35,7 @@ def objective(trial):
         total_timesteps = 100_000,
         batch_size = batch_size,
         policy_lr = policy_lr,
-        track = False ,  
+        track = True ,  
         optimizer=optimizer  , 
         trial = trial
     )
