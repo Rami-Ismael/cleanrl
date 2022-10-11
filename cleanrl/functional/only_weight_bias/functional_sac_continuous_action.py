@@ -583,7 +583,7 @@ def sac_functional(
             if global_step % 100 == 0:
                 print("SPS:", int(global_step / (time.time() - start_time)))
                 if args.autotune and args.track:
-                    run.log(({"losses/alpha_loss" , alpha_loss.item()}), step = global_step)
+                    run.log(({"losses/alpha_loss" : alpha_loss.item()}), step = global_step)
                 if args.track:
                     run.log({"losses/qf1_values":qf1_a_values.mean().item()} , step = global_step)
                     run.log({"losses/qf2_values":qf2_a_values.mean().item()} , step = global_step)
