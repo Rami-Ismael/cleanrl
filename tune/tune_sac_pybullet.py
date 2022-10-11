@@ -34,7 +34,7 @@ def objective(trial):
         total_timesteps = 100_000,
         
         policy_lr = policy_lr,
-        
+        track = False ,  
         optimizer=optimizer  , 
         trial = trial
     )
@@ -48,11 +48,12 @@ study = optuna.create_study(
                                          n_warmup_steps = 5),
     sampler = optuna.samplers.TPESampler(),
 )
+'''
 start_trial = {
     "policy_lr": 3e-4,
 }
-
-study.enqueue_trial(start_trial)
+'''
+#study.enqueue_trial(start_trial)
 
 study.optimize(
     objective , 

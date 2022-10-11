@@ -126,6 +126,7 @@ class SoftQNetwork(nn.Module):
                  quantize_activation_quantize_max:int = 255,
                  quantize_activation_quantize_reduce_range:bool = False,
                  quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
+                 backend:str = 'fbgemm',
                  ):
         super().__init__()
         ## Save the Param
@@ -160,8 +161,8 @@ class SoftQNetwork(nn.Module):
             self.fuse_model()
             ## Set the Quantization Configuration
             logging.info("Set the Quantization Configuration")
-            logging.info(f"The Quantization Configuration is { self.get_quantize_configuration()}")
-            self.model.qconfig = self.get_quantize_configuration()
+            logging.info(f"The Quantization Configuration is { self.get_quantization_config() }")
+            self.model.qconfig = self.get_quantization_config()
             ## Prepare the QAT
             logging.info("Prepare the QAT")
             torch.ao.quantization.prepare_qat(self.model, inplace=True)
@@ -183,36 +184,29 @@ class SoftQNetwork(nn.Module):
             torch.quantization.fuse_modules(self.model, [['1', '2'], ['3', '4']], inplace=True)
         else:
             torch.ao.quantization.fuse_modules(self.model, [['0', '1'], ['2', '3']], inplace=True)
-    def get_quantize_configuration(self):
+    def get_quantization_config(self):
+        activation = torch.nn.Identity()
+        weight = torch.nn.Identity()
         if self.quantize_weight:
+            fq_weights = torch.quantization.FakeQuantize.with_args(
+                        observer = torch.quantization.MovingAveragePerChannelMinMaxObserver , 
+                        quant_min=-(2 ** self.quantize_weight_bitwidth) // 2,
+                        quant_max=(2 ** self.quantize_weight_bitwidth) // 2 - 1,
+                        dtype=torch.qint8, 
+                        qscheme=torch.per_tensor_affine, 
+                        reduce_range=False)
             if self.quantize_activation:
-                return torch.ao.quantization.QConfig(
-                    activation = torch.ao.quantization.FakeQuantize.with_args(
-                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
-                            dtype = self.quantize_activation_quantize_dtype,
-                            reduce_range = self.quantize_activation_quantize_reduce_range,
-                            quant_min = self.quantize_activation_quantize_min,
-                            quant_max = self.quantize_activation_quantize_max,
-                        )
-                    ),
-                    weight = torch.ao.quantization.FakeQuantize.with_args(
-                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
-                            dtype = torch.quint8,
-                            quant_min = -128,
-                            quant_max = 127,
-                        )
+                fq_activation = torch.quantization.FakeQuantize.with_args(
+                        observer = torch.quantization.MovingAveragePerChannelMinMaxObserver , 
+                        quant_min=self.quantize_activation_quantize_min,
+                        quant_max=self.quantize_activation_quantize_max,
+                        dtype = getattr(torch, self.quantize_activation_quantize_dtype), 
+                        qscheme=torch.per_tensor_affine, 
+                        reduce_range=self.quanitize_activation_quantize_reduce_range
                     )
-                )
+                return torch.ao.quantization.QConfig( activation = fq_activation, weight = fq_weights )
             else:
-                return torch.ao.quantization.QConfig(
-                    activation = torch.nn.Identity,
-                    weight = torch.ao.quantization.FakeQuantize.with_args(
-                        observer = torch.ao.quantization.MovingAverageMinMaxObserver,
-                            quant_min = -128 ,
-                            quant_max = 127,
-                            dtype = torch.qint8 , 
-                        )
-                )
+                return torch.ao.quantization.QConfig(activation = activation, weight = fq_weights)
     def size_of_model(self):
         name_file = "temp.pt"
         torch.save(self.model.state_dict(), name_file)
@@ -265,7 +259,7 @@ class Actor(nn.Module):
             logging.info(self.model) 
             ##  Fuse the model
             self.fuse_model()
-            logging.info(f"After the model being used {self.model}")
+            logging.info(f"After the model being used" , self.model)
             ## Set the Quantization Configuration
             self.model.qconfig = self.get_quantization_config()
             self.fc_mean.qconfig = self.get_quantization_config()
@@ -315,35 +309,28 @@ class Actor(nn.Module):
         mean = torch.tanh(mean) * self.action_scale + self.action_bias
         return action, log_prob, mean
     def get_quantization_config(self):
+        activation = torch.nn.Identity()
+        weight = torch.nn.Identity()
         if self.quantize_weight:
+            fq_weights = torch.quantization.FakeQuantize.with_args(
+                        observer = torch.quantization.MovingAveragePerChannelMinMaxObserver , 
+                        quant_min=-(2 ** self.quantize_weight_bitwidth) // 2,
+                        quant_max=(2 ** self.quantize_weight_bitwidth) // 2 - 1,
+                        dtype=torch.qint8, 
+                        qscheme=torch.per_tensor_affine, 
+                        reduce_range=False)
             if self.quantize_activation:
-                return torch.ao.quantization.QConfig(
-                    activation = torch.ao.quantization.FakeQuantize.with_args(
-                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
-                            dtype = self.quantize_activation_quantize_dtype,
-                            reduce_range = self.quantize_activation_quantize_reduce_range,
-                            quant_min = self.quantize_activation_quantize_min,
-                            quant_max = self.quantize_activation_quantize_max,
-                        )
-                    ),
-                    weight = torch.ao.quantization.FakeQuantize.with_args(
-                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
-                            dtype = torch.quint8,
-                            quant_min = -128,
-                            quant_max = 127,
-                        )
+                fq_activation = torch.quantization.FakeQuantize.with_args(
+                    observer = torch.quantization.MovingAveragePerChannelMinMaxObserver , 
+                        quant_min=self.quantize_activation_quantize_min,
+                        quant_max=self.quantize_activation_quantize_max,
+                        dtype = getattr(torch, self.quantize_activation_quantize_dtype), 
+                        qscheme=torch.per_tensor_affine, 
+                        reduce_range=self.quanitize_activation_quantize_reduce_range
                     )
-                )
+                return torch.ao.quantization.QConfig( activation = fq_activation, weight = fq_weights )
             else:
-                return torch.ao.quantization.QConfig(
-                    activation = torch.nn.Identity,
-                    weight = torch.ao.quantization.FakeQuantize.with_args(
-                        observer = torch.ao.quantization.MovingAverageMinMaxObserver,
-                            quant_min = -128 ,
-                            quant_max = 127,
-                            dtype = torch.qint8 , 
-                        )
-                )
+                return torch.ao.quantization.QConfig(activation = activation, weight = fq_weights)
     def size_of_model(self):
         name_file = "temp.pt"
         torch.save(self.model.state_dict(), name_file)
