@@ -31,7 +31,7 @@ def objective(trial):
         
         seed = int(seed),
         
-        total_timesteps = 1000,
+        total_timesteps = 100_000,
         
         policy_lr = policy_lr,
         
