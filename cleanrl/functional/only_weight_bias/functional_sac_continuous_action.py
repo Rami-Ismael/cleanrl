@@ -514,8 +514,8 @@ def sac_functional(
                 if int(info['episode']['r'] % 2) == 0:
                     episode_returns = float(info["episode"]["r"])
                 if args.track:
-                    run.log("charts/episodic_return", info["episode"]["r"], global_step)
-                    run.log("charts/episode_length", info["episode"]["l"], global_step)
+                    run.log({"chart/episodic_return": info["episode"]["r"]} , step = global_step)
+                    run.log({"chart/episodic_return": info["episode"]["r"]} , step = global_step)
                 trial.report(float(info["episode"]["r"]), global_step)
                 break
 
@@ -583,16 +583,16 @@ def sac_functional(
             if global_step % 100 == 0:
                 print("SPS:", int(global_step / (time.time() - start_time)))
                 if args.autotune and args.track:
-                    run.log("losses/alpha_loss", alpha_loss.item(), global_step)
+                    run.log(({"losses/alpha_loss" , alpha_loss.item()}), step = global_step)
                 if args.track:
-                    run.log("losses/qf1_values", qf1_a_values.mean().item(), global_step)
-                    run.log("losses/qf2_values", qf2_a_values.mean().item(), global_step)
-                    run.log("losses/qf1_loss", qf1_loss.item(), global_step)
-                    run.log("losses/qf2_loss", qf2_loss.item(), global_step)
-                    run.log("losses/qf_loss", qf_loss.item() / 2.0, global_step)
-                    run.log("losses/actor_loss", actor_loss.item(), global_step)
-                    run.log("losses/alpha", alpha, global_step)
-                    run.log("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+                    run.log({"losses/qf1_values":qf1_a_values.mean().item()} , step = global_step)
+                    run.log({"losses/qf2_values":qf2_a_values.mean().item()} , step = global_step)
+                    run.log({"losses/qf1_loss":qf1_loss.item()} , step = global_step)
+                    run.log({"losses/qf2_loss":qf2_loss.item()} , step = global_step)
+                    run.log({"losses/qf_loss":qf_loss.item() / 2.0}, step = global_step)
+                    run.log({"losses/actor_loss":actor_loss.item()} ,step = global_step)
+                    run.log({"losses/alpha":alpha}, step = global_step)
+                    run.log({"charts/SPS":int(global_step / (time.time() - start_time))}, step = global_step)
 
     envs.close()
     if args.track:
