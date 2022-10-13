@@ -507,7 +507,8 @@ def sac_functional(
                 if int(info['episode']['r'] % 2) == 0:
                     episode_returns = float(info["episode"]["r"])
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
-                trial.report(float(info["episode"]["r"]), global_step)
+                if trial is not None:
+                    trial.report(float(info["episode"]["r"]), global_step)
                 break
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `terminal_observation`

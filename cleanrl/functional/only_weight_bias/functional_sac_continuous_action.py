@@ -501,7 +501,8 @@ def sac_functional(
                 if args.track:
                     run.log({"charts/episodic_return": info["episode"]["r"]} , step = global_step)
                     run.log({"charts/episodic_return": info["episode"]["r"]} , step = global_step)
-                trial.report(float(info["episode"]["r"]), global_step)
+                if trial is not None:
+                    trial.report(float(info["episode"]["r"]), global_step)
                 break
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `terminal_observation`
