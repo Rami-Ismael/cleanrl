@@ -61,4 +61,4 @@ start_trial = {
 study.optimize(
     objective , 
     n_trials= 100,
-)
+)A

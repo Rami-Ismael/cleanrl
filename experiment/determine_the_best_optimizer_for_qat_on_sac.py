@@ -24,24 +24,24 @@ logging.basicConfig(filename="tests.log", level=logging.NOTSET,
 def objective(trial):
     print(f" Strarting trial {trial.number}")
     
-    policy_lr = trial.suggest_float("policy_lr", 2.5e-6, 1e-2)
-    optimizer = trial.suggest_categorical('optimizer', ['Adam', 'hAdam' , "Adan"])
-    batch_size = trial.suggest_categorical('batch_size', [256, 512, 1024 , 2048  , 4096 , 8192 , 16384])
-    q_lr = trial.suggest_float("q_lr", 2.5e-6, 1e-2)
-    seed = random() * 100 + 1
-    average_episode_return    = sac_functional(
-        
-        seed = int(seed),
-        
-        total_timesteps = 100_000,
-        batch_size = batch_size,
-        policy_lr = policy_lr,
-        q_lr = q_lr,
-        track = True ,  
-        optimizer=optimizer  , 
-        trial = trial
-    )
-    return average_episode_return 
+    max_episode_return = -1000
+    for optimizer in ["Adam","hAdam","Adan"]:
+        policy_lr = trial.suggest_float("policy_lr", 2.5e-6, 1e-2)
+        q_lr = trial.suggest_float("q_lr", 2.5e-6, 1e-2)
+        seed = random() * 100 + 1
+        for seed in range( 1 , 3):
+            average_episode_return    = sac_functional(
+                
+                seed = int(seed),
+                
+                total_timesteps = 100_000,
+                policy_lr = policy_lr,
+                q_lr = q_lr,
+                track = True ,  
+                optimizer = optimizer, 
+            )
+            max_episode_return = max(max_episode_return , average_episode_return)
+    return  max_episode_return
     
 # have the seed to be random value between 0 and 10
 

@@ -49,7 +49,7 @@ def parse_args():
         help="weather to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments
-    parser.add_argument("--env-id", type=str, default="HumanoidBulletEnv-v0",
+    parser.add_argument("--env-id", type=str, default="HalfCheetah-v2",
         help="the id of the environment")
     parser.add_argument("--total-timesteps", type=int, default=100_000,
         help="total timesteps of the experiments")
@@ -353,6 +353,7 @@ def sac_functional(
     batch_size : int = 256,
     learning_starts:int = 1000,
     policy_lr:float=3e-4,
+    q_lr:float=1e-3,
     
     optimizer:str = "Adam",
     
@@ -367,6 +368,7 @@ def sac_functional(
     args.learning_starts = learning_starts
     args.optimizer = optimizer
     args.batch_size = batch_size
+    args.q_lr = q_lr
     print(args)
     
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
