@@ -28,7 +28,6 @@ def objective(trial):
     for optimizer in ["Adam","hAdam","Adan"]:
         policy_lr = trial.suggest_float("policy_lr", 2.5e-6, 1e-2)
         q_lr = trial.suggest_float("q_lr", 2.5e-6, 1e-2)
-        seed = random() * 100 + 1
         for seed in range( 1 , 3):
             average_episode_return    = sac_functional(
                 
@@ -51,11 +50,10 @@ study = optuna.create_study(
                                          n_warmup_steps = 5),
     sampler = optuna.samplers.TPESampler(),
 )
-'''
 start_trial = {
     "policy_lr": 3e-4,
+    "q_lr": 1e-3,
 }
-'''
 #study.enqueue_trial(start_trial)
 
 study.optimize(
