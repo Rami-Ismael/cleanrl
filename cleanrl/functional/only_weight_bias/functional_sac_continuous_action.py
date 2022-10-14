@@ -142,9 +142,6 @@ class SoftQNetwork(nn.Module):
         self.quantize_activation_quantize_max = quantize_activation_quantize_max
         self.quanitize_activation_quantize_reduce_range = quantize_activation_quantize_reduce_range
         self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
-        self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 1)
         if self.quantize_weight or self.quantize_activation:
             self.model = nn.Sequential(
                 torch.ao.quantization.QuantStub(),
@@ -182,7 +179,7 @@ class SoftQNetwork(nn.Module):
         return self.model(x)
     def fuse_model(self):
         if self.quantize_weight or self.quantize_activation:
-            torch.quantization.fuse_modules(self.model, [['1', '2'], ['3', '4']], inplace=True)
+            torch.ao.quantization.fuse_modules(self.model, [['1', '2'], ['3', '4']], inplace=True)
         else:
             torch.ao.quantization.fuse_modules(self.model, [['0', '1'], ['2', '3']], inplace=True)
     def get_quantization_config(self):

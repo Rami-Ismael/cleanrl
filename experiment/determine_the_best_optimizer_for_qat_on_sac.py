@@ -23,12 +23,11 @@ logging.basicConfig(filename="tests.log", level=logging.NOTSET,
 
 def objective(trial):
     print(f" Strarting trial {trial.number}")
-    
+    policy_lr = trial.suggest_float("policy_lr", 2.5e-6, 1e-2)
+    q_lr = trial.suggest_float("q_lr", 2.5e-6, 1e-2)
     max_episode_return = -1000
     for optimizer in ["Adam","hAdam","Adan"]:
-        policy_lr = trial.suggest_float("policy_lr", 2.5e-6, 1e-2)
-        q_lr = trial.suggest_float("q_lr", 2.5e-6, 1e-2)
-        for seed in range( 1 , 3):
+        for seed in range( 0 , 3):
             average_episode_return    = sac_functional(
                 
                 seed = int(seed),
@@ -46,7 +45,7 @@ def objective(trial):
 
 study = optuna.create_study(
     direction="maximize",
-    pruner = optuna.pruners.MedianPruner(n_startup_trials=0 , 
+    pruner = optuna.pruners.MedianPruner(n_startup_trials=5 , 
                                          n_warmup_steps = 5),
     sampler = optuna.samplers.TPESampler(),
 )
