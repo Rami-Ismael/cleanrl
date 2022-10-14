@@ -26,13 +26,13 @@ def objective(trial):
     policy_lr = trial.suggest_float("policy_lr", 2.5e-6, 1e-2)
     q_lr = trial.suggest_float("q_lr", 2.5e-6, 1e-2)
     max_episode_return = -1000
-    for optimizer in ["Adam","hAdam","Adan"]:
+    for optimizer in ["Adam","hAdam"]:
         for seed in range( 0 , 3):
             average_episode_return    = sac_functional(
                 
                 seed = int(seed),
                 
-                total_timesteps = 100_000,
+                total_timesteps = 200_000,
                 policy_lr = policy_lr,
                 q_lr = q_lr,
                 track = True ,  
