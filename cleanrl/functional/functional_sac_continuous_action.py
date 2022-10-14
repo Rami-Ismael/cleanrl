@@ -126,7 +126,6 @@ class SoftQNetwork(nn.Module):
                  quantize_activation_quantize_max:int = 255,
                  quantize_activation_quantize_reduce_range:bool = False,
                  quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
-                 backend:str = 'fbgemm',
                  ):
         super().__init__()
         ## Save the Param

@@ -44,6 +44,7 @@ def objective(trial):
 # have the seed to be random value between 0 and 10
 
 study = optuna.create_study(
+    seed  = 42 , 
     direction="maximize",
     pruner = optuna.pruners.MedianPruner(n_startup_trials=5 , 
                                          n_warmup_steps = 5),
