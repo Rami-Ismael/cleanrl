@@ -6,6 +6,7 @@ import random
 import sys
 import time
 from distutils.util import strtobool
+from psutil import cpu_count
 from rich import print
 
 import gym
@@ -49,7 +50,7 @@ def parse_args():
         help="weather to capture videos of the agent performances (check out `videos` folder)")
 
     # Algorithm specific arguments
-    parser.add_argument("--env-id", type=str, default="AntBulletEnv-v0",
+    parser.add_argument("--env-id", type=str, default="HopperBulletEnv-v0",
         help="the id of the environment")
     parser.add_argument("--total-timesteps", type=int, default=100_000,
         help="total timesteps of the experiments")
@@ -87,8 +88,6 @@ def parse_args():
     ## Quantize Activation
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
-    parser.add_argument("--quantize-activation-quantize-min", type=int, default= -127)
-    parser.add_argument("--quantize-activation-quantize-max", type=int, default= 126)
     parser.add_argument("--quantize-activation-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="qint8")
     
@@ -123,8 +122,6 @@ class SoftQNetwork(nn.Module):
                  quantize_weight_bitwidth:int = 8,
                  quantize_activation:bool = False,
                  quantize_activation_bitwidth:int = 8,
-                 quantize_activation_quantize_min:int = 0,
-                 quantize_activation_quantize_max:int = 255,
                  quantize_activation_quantize_reduce_range:bool = False,
                  quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
                  backend:str = 'fbgemm',
@@ -138,8 +135,6 @@ class SoftQNetwork(nn.Module):
         ### Quantize Param Activation
         self.quantize_activation = quantize_activation
         self.quantize_activation_bitwidth = quantize_activation_bitwidth
-        self.quantize_activation_quantize_min = quantize_activation_quantize_min
-        self.quantize_activation_quantize_max = quantize_activation_quantize_max
         self.quanitize_activation_quantize_reduce_range = quantize_activation_quantize_reduce_range
         self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
         if self.quantize_weight or self.quantize_activation:
@@ -188,7 +183,7 @@ class SoftQNetwork(nn.Module):
         if self.quantize_weight:
             fq_weights = torch.quantization.FakeQuantize.with_args(
                         observer = torch.quantization.MovingAverageMinMaxObserver , 
-                        quant_min=-(2 ** self.quantize_weight_bitwidth) // 2,
+                        quant_min = -(2 ** self.quantize_weight_bitwidth) // 2,
                         quant_max=(2 ** self.quantize_weight_bitwidth) // 2 - 1,
                         dtype=torch.qint8, 
                         qscheme=torch.per_tensor_affine, 
@@ -196,8 +191,8 @@ class SoftQNetwork(nn.Module):
             if self.quantize_activation:
                 fq_activation = torch.quantization.FakeQuantize.with_args(
                         observer = torch.quantization.MovingAverageMinMaxObserver , 
-                        quant_min=self.quantize_activation_quantize_min,
-                        quant_max=self.quantize_activation_quantize_max,
+                        quant_min = -(2 ** self.quantize_activation_bitwidth) // 2,
+                        quant_max = (2 ** self.quantize_activation_bitwidth) // 2 - 1,
                         dtype = getattr(torch, self.quantize_activation_quantize_dtype), 
                         qscheme=torch.per_tensor_affine, 
                         reduce_range=self.quanitize_activation_quantize_reduce_range
@@ -223,8 +218,6 @@ class Actor(nn.Module):
                  quantize_weight_bitwidth:int = 8,
                  quantize_activation:bool = False,
                  quantize_activation_bitwidth:int = 8,
-                 quantize_activation_quantize_min:int = 0,
-                 quantize_activation_quantize_max:int = 255,
                  quantize_activation_quantize_reduce_range:bool = False,
                  quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
           ):
@@ -234,8 +227,6 @@ class Actor(nn.Module):
         self.quantize_weight_bitwidth = quantize_weight_bitwidth
         self.quantize_activation = quantize_activation
         self.quantize_activation_bitwidth = quantize_activation_bitwidth
-        self.quantize_activation_quantize_min = quantize_activation_quantize_min
-        self.quantize_activation_quantize_max = quantize_activation_quantize_max
         self.quanitize_activation_quantize_reduce_range = quantize_activation_quantize_reduce_range
         self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
         
@@ -313,16 +304,16 @@ class Actor(nn.Module):
         if self.quantize_weight:
             fq_weights = torch.quantization.FakeQuantize.with_args(
                         observer = torch.quantization.MovingAverageMinMaxObserver , 
-                        quant_min=-(2 ** self.quantize_weight_bitwidth) // 2,
-                        quant_max=(2 ** self.quantize_weight_bitwidth) // 2 - 1,
+                        quant_min = -(2 ** self.quantize_weight_bitwidth) // 2 ,
+                        quant_max = (2 ** self.quantize_weight_bitwidth) // 2 - 1,
                         dtype=torch.qint8, 
                         qscheme=torch.per_tensor_affine, 
                         reduce_range=False)
             if self.quantize_activation:
                 fq_activation = torch.quantization.FakeQuantize.with_args(
                     observer = torch.quantization.MovingAverageMinMaxObserver , 
-                        quant_min=self.quantize_activation_quantize_min,
-                        quant_max=self.quantize_activation_quantize_max,
+                        quant_min =  -(2 ** self.quantize_activation_bitwidth) // 2 ,  
+                        quant_max = (2 ** self.quantize_activation_bitwidth) // 2 - 1, 
                         dtype = getattr(torch, self.quantize_activation_quantize_dtype), 
                         qscheme=torch.per_tensor_affine, 
                         reduce_range=self.quanitize_activation_quantize_reduce_range
@@ -352,6 +343,9 @@ def sac_functional(
     policy_lr:float=3e-4,
     q_lr:float=1e-3,
     
+    quantization_weight_bitwidth:int = 8,
+    quantization_activation_bitwidth:int = 8,
+    
     optimizer:str = "Adam",
     
     trial:optuna.trial.Trial = None
@@ -366,6 +360,9 @@ def sac_functional(
     args.optimizer = optimizer
     args.batch_size = batch_size
     args.q_lr = q_lr
+    ## Quantization Arguments
+    args.quantization_weight_bitwidth = quantization_weight_bitwidth
+    args.quantization_activation_bitwidth = quantization_activation_bitwidth
     print(args)
     
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
@@ -393,7 +390,9 @@ def sac_functional(
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
+    envs = gym.vector.SyncVectorEnv(
+        [make_env(args.env_id, args.seed, 0, args.capture_video, run_name)]
+    )
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
     max_action = float(envs.single_action_space.high[0])
@@ -402,8 +401,7 @@ def sac_functional(
                   quantize_weight = args.quantize_weight,
                   quantize_weight_bitwidth = args.quantize_weight_bitwidth,
                   quantize_activation = args.quantize_activation,
-                  quantize_activation_quantize_min = args.quantize_activation_quantize_min,
-                  quantize_activation_quantize_max = args.quantize_activation_quantize_max,
+                  quantize_activation_bitwidth = args.quantize_activation_bitwidth,
                   quantize_activation_quantize_reduce_range = args.quantize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                   ).to(device)
@@ -411,8 +409,7 @@ def sac_functional(
                   quantize_weight = args.quantize_weight,
                   quantize_weight_bitwidth = args.quantize_weight_bitwidth,
                   quantize_activation = args.quantize_activation,
-                  quantize_activation_quantize_min = args.quantize_activation_quantize_min,
-                  quantize_activation_quantize_max = args.quantize_activation_quantize_max,
+                  quantize_activation_bitwidth = args.quantize_activation_bitwidth,
                   quantize_activation_quantize_reduce_range = args.quantize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                   ).to(device)
@@ -420,8 +417,7 @@ def sac_functional(
                 quantize_weight = args.quantize_weight,
                   quantize_weight_bitwidth = args.quantize_weight_bitwidth,
                   quantize_activation = args.quantize_activation,
-                  quantize_activation_quantize_min = args.quantize_activation_quantize_min,
-                  quantize_activation_quantize_max = args.quantize_activation_quantize_max,
+                  quantize_activation_bitwidth = args.quantize_activation_bitwidth,
                   quantize_activation_quantize_reduce_range = args.quantize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                        ).to(device)
@@ -429,8 +425,7 @@ def sac_functional(
                     quantize_weight = args.quantize_weight,
                   quantize_weight_bitwidth = args.quantize_weight_bitwidth,
                   quantize_activation = args.quantize_activation,
-                  quantize_activation_quantize_min = args.quantize_activation_quantize_min,
-                  quantize_activation_quantize_max = args.quantize_activation_quantize_max,
+                  quantize_activation_bitwidth = args.quantize_activation_bitwidth,
                   quantize_activation_quantize_reduce_range = args.quantize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                               ).to(device)
@@ -438,8 +433,7 @@ def sac_functional(
                 quantize_weight = args.quantize_weight,
                   quantize_weight_bitwidth = args.quantize_weight_bitwidth,
                   quantize_activation = args.quantize_activation,
-                  quantize_activation_quantize_min = args.quantize_activation_quantize_min,
-                  quantize_activation_quantize_max = args.quantize_activation_quantize_max,
+                  quantize_activation_bitwidth = args.quantize_activation_bitwidth,
                   quantize_activation_quantize_reduce_range = args.quantize_activation_quantize_reduce_range,
                   quantize_activation_quantize_dtype = args.quantize_activation_quantize_dtype,
                               ).to(device)
