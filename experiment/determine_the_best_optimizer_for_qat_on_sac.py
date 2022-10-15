@@ -44,11 +44,11 @@ def objective(trial):
 # have the seed to be random value between 0 and 10
 
 study = optuna.create_study(
-    seed  = 42 , 
     direction="maximize",
     pruner = optuna.pruners.MedianPruner(n_startup_trials=5 , 
                                          n_warmup_steps = 5),
-    sampler = optuna.samplers.TPESampler(),
+    sampler = optuna.samplers.TPESampler(
+        seed = 42  ),
 )
 start_trial = {
     "policy_lr": 3e-4,
