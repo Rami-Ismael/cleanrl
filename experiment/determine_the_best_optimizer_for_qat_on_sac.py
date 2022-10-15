@@ -54,7 +54,7 @@ start_trial = {
     "policy_lr": 3e-4,
     "q_lr": 1e-3,
 }
-#study.enqueue_trial(start_trial)
+study.enqueue_trial(start_trial)
 
 study.optimize(
     objective , 
