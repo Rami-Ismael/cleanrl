@@ -343,8 +343,8 @@ def sac_functional(
     policy_lr:float=3e-4,
     q_lr:float=1e-3,
     
-    quantization_weight_bitwidth:int = 8,
-    quantization_activation_bitwidth:int = 8,
+    quantize_weight_bitwidth:int = 8,
+    quantize_activation_bitwidth:int = 8,
     
     optimizer:str = "Adam",
     
@@ -361,8 +361,8 @@ def sac_functional(
     args.batch_size = batch_size
     args.q_lr = q_lr
     ## Quantization Arguments
-    args.quantization_weight_bitwidth = quantization_weight_bitwidth
-    args.quantization_activation_bitwidth = quantization_activation_bitwidth
+    args.quantize_weight_bitwidth = quantize_weight_bitwidth
+    args.quantize_activation_bitwidth = quantize_activation_bitwidth
     print(args)
     
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
