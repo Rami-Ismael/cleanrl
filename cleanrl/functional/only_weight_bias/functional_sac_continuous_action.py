@@ -185,7 +185,7 @@ class SoftQNetwork(nn.Module):
                         observer = torch.quantization.MovingAverageMinMaxObserver , 
                         quant_min = -(2 ** self.quantize_weight_bitwidth) // 2,
                         quant_max=(2 ** self.quantize_weight_bitwidth) // 2 - 1,
-                        dtype=torch.qint8, 
+                        dtype = self.get_dtype(), 
                         qscheme=torch.per_tensor_affine, 
                         reduce_range=False)
             if self.quantize_activation:
@@ -193,7 +193,7 @@ class SoftQNetwork(nn.Module):
                         observer = torch.quantization.MovingAverageMinMaxObserver , 
                         quant_min = -(2 ** self.quantize_activation_bitwidth) // 2,
                         quant_max = (2 ** self.quantize_activation_bitwidth) // 2 - 1,
-                        dtype = getattr(torch, self.quantize_activation_quantize_dtype), 
+                        dtype =  self.get_dtype() ,
                         qscheme=torch.per_tensor_affine, 
                         reduce_range=self.quanitize_activation_quantize_reduce_range
                     )
@@ -206,6 +206,11 @@ class SoftQNetwork(nn.Module):
         size =  os.path.getsize(name_file)/1e6
         os.remove(name_file)
         return size
+    def get_dtype(self):
+        if self.quantize_activation_bitwidth <= 8:
+            return getattr(torch, self.quantize_activation_quantize_dtype)
+        elif self.quantize_activation_bitwidth == 16:
+            return torch.int16
 
 
 LOG_STD_MAX = 2
@@ -251,10 +256,10 @@ class Actor(nn.Module):
             self.fuse_model()
             logging.info(f"After the model being used" , self.model)
             ## Set the Quantization Configuration
+            logging.info(f"The Quantization Configuration of the Model is {self.get_quantization_config()}\n")
             self.model.qconfig = self.get_quantization_config()
             self.fc_mean.qconfig = self.get_quantization_config()
             self.fc_logstd.qconfig = self.get_quantization_config()
-            logging.info(f"The Quantization Configuration of the Model is {self.model.qconfig}\n")
             ## prepare QAT
             torch.ao.quantization.prepare_qat(self.model, inplace=True)
             torch.ao.quantization.prepare_qat(self.fc_mean, inplace=True)
@@ -306,7 +311,7 @@ class Actor(nn.Module):
                         observer = torch.quantization.MovingAverageMinMaxObserver , 
                         quant_min = -(2 ** self.quantize_weight_bitwidth) // 2 ,
                         quant_max = (2 ** self.quantize_weight_bitwidth) // 2 - 1,
-                        dtype=torch.qint8, 
+                        dtype = self.get_dtype() , 
                         qscheme=torch.per_tensor_affine, 
                         reduce_range=False)
             if self.quantize_activation:
@@ -314,7 +319,7 @@ class Actor(nn.Module):
                     observer = torch.quantization.MovingAverageMinMaxObserver , 
                         quant_min =  -(2 ** self.quantize_activation_bitwidth) // 2 ,  
                         quant_max = (2 ** self.quantize_activation_bitwidth) // 2 - 1, 
-                        dtype = getattr(torch, self.quantize_activation_quantize_dtype), 
+                        dtype = self.get_dtype(), 
                         qscheme=torch.per_tensor_affine, 
                         reduce_range=self.quanitize_activation_quantize_reduce_range
                     )
@@ -330,6 +335,11 @@ class Actor(nn.Module):
     def fuse_model(self):
         if self.quantize_activation or self.quantize_weight:
             torch.ao.quantization.fuse_modules(self.model ,  [ ["1" , "2"], ["3","4"] ] ,inplace = True )
+    def get_dtype(self):
+        if self.quantize_activation_bitwidth <= 8:
+            return getattr(torch, self.quantize_activation_quantize_dtype)
+        elif self.quantize_activation_bitwidth == 16:
+            return torch.int16
 
 def sac_functional(
     
