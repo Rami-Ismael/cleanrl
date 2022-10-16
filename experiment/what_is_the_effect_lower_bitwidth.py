@@ -28,6 +28,6 @@ for quantize_activation_bitwidth , quantize_weight_bitwidth in zip( [  8 , 6 ,  
             total_timesteps = 200_000,
             quantize_activation_bitwidth = quantize_activation_bitwidth,
             quantize_weight_bitwidth =  quantize_weight_bitwidth,
-            track = False,  
+            track = True,  
             optimizer = "Adam"
         )
