@@ -8,6 +8,7 @@ import time
 from distutils.util import strtobool
 from psutil import cpu_count
 from rich import print
+from dotenv import load_dotenv
 
 import gym
 import numpy as np
@@ -28,6 +29,17 @@ import wandb
 logging.basicConfig(filename="tests.log", level=logging.INFO,
                     filemode='w',
                     format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
+try:
+    load_dotenv()
+    WEIGHT_API_KEY = os.environ['WEIGHT_API_KEY']
+    wandb.login(key=WEIGHT_API_KEY)
+except:
+    print("No weight api key found")
+    logging.info("No weight api key found")
+    
+    
+    
+
 
 def parse_args():
     # fmt: off

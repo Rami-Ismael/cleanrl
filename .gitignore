@@ -126,3 +126,13 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+#  Database
+*db*
+
+# Logging
+*log*
+
+# PyTorch
+*.pth*
+".pt*
