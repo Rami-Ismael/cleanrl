@@ -8,6 +8,7 @@ from distutils.util import strtobool
 
 import gym
 import numpy as np
+from cleanrl.algos.opt import Adan, hAdam
 import pybullet_envs  # noqa
 import torch
 import torch.nn as nn
@@ -356,6 +357,13 @@ if __name__ == "__main__":
     target_actor.load_state_dict(actor.state_dict())
     qf1_target.load_state_dict(qf1.state_dict())
     qf2_target.load_state_dict(qf2.state_dict())
+    optimizer_of_choice = None
+    if args.optimizer == "Adam":
+        optimizer_of_choice = torch.optim.Adam
+    elif args.optimizer == "hAdam":
+        optimizer_of_choice = hAdam
+    elif args.optizer == "Adan":
+        optimizer_of_choice =  Adan
     q_optimizer = optim.Adam(list(qf1.parameters()) + list(qf2.parameters()), lr=args.learning_rate)
     actor_optimizer = optim.Adam(list(actor.parameters()), lr=args.learning_rate)
 
