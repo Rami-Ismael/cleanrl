@@ -105,7 +105,6 @@ def parse_args():
     ## Quantize Activation
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
-    parser.add_argument("--quantize-activation-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="qint8")
     
     ## Other papers algorithm and ideas
@@ -139,7 +138,6 @@ class SoftQNetwork(nn.Module):
                  quantize_weight_bitwidth:int = 8,
                  quantize_activation:bool = False,
                  quantize_activation_bitwidth:int = 8,
-                 quantize_activation_quantize_reduce_range:bool = False,
                  quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
                  backend:str = 'fbgemm',
                  ):
@@ -152,7 +150,6 @@ class SoftQNetwork(nn.Module):
         ### Quantize Param Activation
         self.quantize_activation = quantize_activation
         self.quantize_activation_bitwidth = quantize_activation_bitwidth
-        self.quanitize_activation_quantize_reduce_range = quantize_activation_quantize_reduce_range
         self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
         if self.quantize_weight or self.quantize_activation:
             self.model = nn.Sequential(
