@@ -101,10 +101,7 @@ class QNetwork(nn.Module):
                  quantize_weight_bitwidth:int = 8,
                  quantize_activation:bool = False,
                  quantize_activation_bitwidth:int = 8,
-                 quantize_activation_quantize_min:int = 0,
-                 quantize_activation_quantize_max:int = 255,
-                 quantize_activation_quantize_reduce_range:bool = False,
-                 quantize_activation_quantize_dtype:str = "qint8" , 
+                 quantize_activation_quantize_dtype:str = "quint8" , 
                  ):
         super().__init__()
         ## Save the quantize parameters
@@ -245,8 +242,7 @@ class Actor(nn.Module):
         self.register_buffer("action_bias", torch.FloatTensor((env.action_space.high + env.action_space.low) / 2.0))
 
     def forward(self, x):
-        x = self.model(x)
-        return x * self.action_scale + self.action_bias
+        return self.model(x) * self.action_scale + self.action_bias
     def fuse_modules(self):
         if self.quantize_activation or self.quantize_weight:
             self.model = torch.quantization.fuse_modules( self.model ,  [["1" , "2"] , ["3" , "4"]] , inplace=True) 

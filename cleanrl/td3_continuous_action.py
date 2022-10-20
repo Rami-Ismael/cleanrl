@@ -1,5 +1,6 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/td3/#td3_continuous_actionpy
 import argparse
+import logging
 import os
 import random
 import time
@@ -14,6 +15,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
+
+logging.basicConfig(filename="tests.log", level=logging.NOTSET,
+                    filemode='w',
+                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 
 
 def parse_args():
@@ -61,6 +66,15 @@ def parse_args():
         help="the frequency of training policy (delayed)")
     parser.add_argument("--noise-clip", type=float, default=0.5,
         help="noise clip parameter of the Target Policy Smoothing Regularization")
+    
+    # Quantization specific arguments
+    ## Quantize Weight
+    parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
+    parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)
+    ## Quantize Activation
+    parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
+    parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
+    parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="qint8")
     args = parser.parse_args()
     # fmt: on
     return args
@@ -83,35 +97,191 @@ def make_env(env_id, seed, idx, capture_video, run_name):
 
 # ALGO LOGIC: initialize agent here:
 class QNetwork(nn.Module):
-    def __init__(self, env):
+    def __init__(self, env , 
+                quantize_weight:bool = False,
+                 quantize_weight_bitwidth:int = 8,
+                 quantize_activation:bool = False,
+                 quantize_activation_bitwidth:int = 8,
+                 quantize_activation_quantize_dtype:str = "quint8" , 
+                 ):
         super().__init__()
-        self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc3 = nn.Linear(256, 1)
+        # Quantize Param Weight
+        self.quantize_weight = quantize_weight
+        self.quantize_weight_bitwidth = quantize_weight_bitwidth
+        ## Quantize Param Activation
+        self.quantoze_activation = quantize_activation
+        self.quantize_activation_bitwidth = quantize_activation_bitwidth
+        if quantize_activation or quantize_weight:
+            self.model = nn.Sequential(
+                torch.quantization.QuantStub(),
+                nn.Linear(env.observation_space.shape[0], 256),
+                nn.ReLU(),
+                nn.Linear(256, 256),
+                nn.ReLU(),
+                nn.Linear(256,1),
+                torch.quantization.DeQuantStub(),
+            )
+            logging.info( self.model)
+            logging.info("Quantize Model")
+            
+            self.fuse_modules()
+            
+            logging.info( self.model)
+            logging.info("Quantize the model ")
+            ## Fuse the model 
+            self.fuse_modules()
+            
+            ## Set the Quantization Configuration
+            logging.info("Set the Quantization Configuration")
+            logging.info(f"The Quantization Configuration is { self.get_quantization_config() }")
+            self.model.qconfig = self.get_quantization_config()
+            ## Prepare the QAT
+            logging.info("Prepare the QAT")
+            torch.ao.quantization.prepare_qat(self.model, inplace=True)
+            logging.info(f"The model is {self.model}")
+        else:
+            self.model = nn.Sequential(
+                nn.Linear(env.observation_space.shape[0], 256),
+                nn.ReLU(),
+                nn.Linear(256, 256),
+                nn.ReLU(),
+                nn.Linear(256,1),
+            )
 
     def forward(self, x, a):
-        x = torch.cat([x, a], 1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+        return self.model(torch.cat([x, a], 1))
+    def fuse_modules(self):
+        if self.quantize_activation or self.quantize_weight:
+            self.model = torch.quantization.fuse_modules( self.model ,  [["1" , "2"] , ["3" , "4"]] , inplace=True) 
+            logging.info(f"Fuse layer , the model structure it's {self.model}")
+    def get_quantization_config(self):
+        activation = torch.nn.Identity()
+        weight = torch.nn.Identity()
+        if self.quantize_weight:
+            fq_weights = torch.quantization.FakeQuantize.with_args(
+                        observer = torch.quantization.MovingAverageMinMaxObserver , 
+                        quant_min = -(2 ** self.quantize_weight_bitwidth) // 2,
+                        quant_max=(2 ** self.quantize_weight_bitwidth) // 2 - 1,
+                        dtype = self.get_dtype(), 
+                        qscheme=torch.per_tensor_affine, 
+                        reduce_range=False)
+            if self.quantize_activation:
+                fq_activation = torch.quantization.FakeQuantize.with_args(
+                        observer = torch.quantization.MovingAverageMinMaxObserver , 
+                        quant_min = 0,
+                        quant_max = (2 ** self.quantize_activation_bitwidth) - 1,
+                        dtype =  self.get_dtype() ,
+                        qscheme=torch.per_tensor_affine, 
+                        reduce_range = False
+                    )
+                return torch.ao.quantization.QConfig( activation = fq_activation, weight = fq_weights )
+            else:
+                return torch.ao.quantization.QConfig(activation = activation, weight = fq_weights)
+    def size_of_model(self):
+        name_file = "temp.pt"
+        torch.save(self.model.state_dict(), name_file)
+        size =  os.path.getsize(name_file)/1e6
+        os.remove(name_file)
+        return size
+    def get_dtype(self):
+        if self.quantize_activation_bitwidth <= 8:
+            return getattr(torch, self.quantize_activation_quantize_dtype)
+        elif self.quantize_activation_bitwidth == 16:
+            return torch.int16
 
 
 class Actor(nn.Module):
-    def __init__(self, env):
+    def __init__(self, env, 
+                quantize_weight:bool = False,
+                 quantize_weight_bitwidth:int = 8,
+                 quantize_activation:bool = False,
+                 quantize_activation_bitwidth:int = 8,
+                 quantize_activation_quantize_dtype:str = "qint8" , 
+                 ):
         super().__init__()
-        self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod(), 256)
-        self.fc2 = nn.Linear(256, 256)
-        self.fc_mu = nn.Linear(256, np.prod(env.single_action_space.shape))
-        # action rescaling
+        # Quantize Param Weight
+        self.quantize_weight = quantize_weight
+        self.quantize_weight_bitwidth = quantize_weight_bitwidth
+        ## Quantize Param Activation
+        self.quantize_activation = quantize_activation
+        self.quantize_activation_bitwidth = quantize_activation_bitwidth
+        self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
+        
+        if quantize_activation or quantize_weight:
+            self.model = nn.Sequential(
+                torch.quantization.QuantStub(),
+                nn.Linear(env.observation_space.shape[0], 256),
+                nn.ReLU(),
+                nn.Linear(256, 256),
+                nn.ReLU(),
+                nn.Linear(256, env.action_space.shape[0]),
+                nn.Tanh(),
+                torch.quantization.DeQuantStub(),
+            )
+            logging.info( self.model)
+            logging.info("Quantize the model ")
+            ## Fuse the model 
+            self.fuse_modules()
+            ## Set the Quantization Configuration
+            logging.info("Set the Quantization Configuration")
+            logging.info(f"The Quantization Configuration is { self.get_quantization_config() }")
+            self.model.qconfig = self.get_quantization_config()
+            ## Prepare the QAT
+            logging.info("Prepare the QAT")
+            torch.ao.quantization.prepare_qat(self.model, inplace=True)
+            logging.info(f"The model is {self.model}")
+        else:
+            self.model = nn.Sequential(
+                nn.Linear(np.array(env.single_observation_space.shape).prod(), 256),
+                nn.ReLU(),
+                nn.Linear(256, 256),
+                nn.ReLU(),
+                nn.Linear(256, env.action_space.shape),
+                nn.Tanh(),
+            )
         self.register_buffer("action_scale", torch.FloatTensor((env.action_space.high - env.action_space.low) / 2.0))
         self.register_buffer("action_bias", torch.FloatTensor((env.action_space.high + env.action_space.low) / 2.0))
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = torch.tanh(self.fc_mu(x))
-        return x * self.action_scale + self.action_bias
+        return self.model(x) * self.action_scale + self.action_bias
+    def fuse_modules(self):
+        if self.quantize_activation or self.quantize_weight:
+            self.model = torch.quantization.fuse_modules( self.model ,  [["1" , "2"] , ["3" , "4"]] , inplace=True) 
+            logging.info(f"Fuse layer , the model structure it's {self.model}")
+    def get_quantization_config(self):
+        activation = torch.nn.Identity()
+        weight = torch.nn.Identity()
+        if self.quantize_weight:
+            fq_weights = torch.quantization.FakeQuantize.with_args(
+                        observer = torch.quantization.MovingAverageMinMaxObserver , 
+                        quant_min = -(2 ** self.quantize_weight_bitwidth) // 2,
+                        quant_max=(2 ** self.quantize_weight_bitwidth) // 2 - 1,
+                        dtype = self.get_dtype(), 
+                        qscheme=torch.per_tensor_affine, 
+                        reduce_range=False)
+            if self.quantize_activation:
+                fq_activation = torch.quantization.FakeQuantize.with_args(
+                        observer = torch.quantization.MovingAverageMinMaxObserver , 
+                        quant_min = -(2 ** self.quantize_activation_bitwidth) // 2,
+                        quant_max = (2 ** self.quantize_activation_bitwidth) // 2 - 1,
+                        dtype =  self.get_dtype() ,
+                        qscheme=torch.per_tensor_affine, 
+                        reduce_range = False , 
+                    )
+                return torch.ao.quantization.QConfig( activation = fq_activation, weight = fq_weights )
+            else:
+                return torch.ao.quantization.QConfig(activation = activation, weight = fq_weights)
+    def size_of_model(self):
+        name_file = "temp.pt"
+        torch.save(self.model.state_dict(), name_file)
+        size =  os.path.getsize(name_file)/1e6
+        os.remove(name_file)
+        return size
+    def get_dtype(self):
+        if self.quantize_activation_bitwidth <= 8:
+            return getattr(torch, self.quantize_activation_quantize_dtype)
+        elif self.quantize_activation_bitwidth == 16:
+            return torch.int16
 
 
 if __name__ == "__main__":
