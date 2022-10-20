@@ -6,7 +6,6 @@ import random
 import sys
 import time
 from distutils.util import strtobool
-from psutil import cpu_count
 from rich import print
 from dotenv import load_dotenv
 
