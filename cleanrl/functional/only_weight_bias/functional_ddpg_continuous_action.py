@@ -467,7 +467,6 @@ def ddpg_functional(
                     run.log({"charts/SPS": int(global_step / (time.time() - start_time))}, global_step)
                 print("SPS:", int(global_step / (time.time() - start_time)))
     envs.close()
-    run.close()
     if args.track:
         run.save("test.log")
         run.finish()
