@@ -39,7 +39,7 @@ try:
         logging.info(f" The script {(os.path.split(sys.argv[0]))[1]} needs to write to the weight & biases, but couldn't gather API key!")
 except:
     print(' Load dot env is not a success!!! ')
-    logging.error(f{"ERROR "})
+    logging.error(' Load dot env is not a success!!! ')
     
     
     
