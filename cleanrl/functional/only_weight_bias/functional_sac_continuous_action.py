@@ -357,10 +357,12 @@ class Actor(nn.Module):
 
 def sac_functional(
     
+    
     exp_name:str = "sac_continuous_actions",
     seed:int = 42,
     track : bool = True , 
     
+    env_id: str="Walker2DBulletEnv-v0",
     total_timesteps : int = 1000 ,
     batch_size : int = 256,
     learning_starts:int = 1000,
@@ -378,6 +380,7 @@ def sac_functional(
     args.exp_name = exp_name
     args.seed  = seed
     args.track = track
+    args.env_id = env_id
     args.policy_lr = policy_lr
     args.total_timesteps = total_timesteps
     args.learning_starts = learning_starts
