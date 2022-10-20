@@ -31,11 +31,17 @@ logging.basicConfig(filename="tests.log", level=logging.INFO,
                     format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
 try:
     load_dotenv()
-    WEIGHT_API_KEY = os.environ['WEIGHT_API_KEY']
-    wandb.login(key=WEIGHT_API_KEY)
+    try:
+        WEIGHT_API_KEY = os.environ['WEIGHT_API_KEY']
+        wandb.login(key=WEIGHT_API_KEY)
+    except:
+        print(f" The script {(os.path.split(sys.argv[0]))[1]} needs to write to the weight & biases, but couldn't gather API key!")
+        logging.info(f" The script {(os.path.split(sys.argv[0]))[1]} needs to write to the weight & biases, but couldn't gather API key!")
 except:
-    print("No weight api key found")
-    logging.info("No weight api key found")
+    print(' Load dot env is not a success!!! ')
+    logging.error(f{"ERROR "})
+    
+    
     
     
     
