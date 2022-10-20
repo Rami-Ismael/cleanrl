@@ -461,10 +461,10 @@ def ddpg_functional(
 
             if global_step % 100 == 0:
                 if args.track:
-                    run.log("losses/qf1_loss", qf1_loss.item(), global_step)
-                    run.log("losses/actor_loss", actor_loss.item(), global_step)
-                    run.log("losses/qf1_values", qf1_a_values.mean().item(), global_step)
-                    run.log("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+                    run.log({"losses/qf1_loss": qf1_loss.item()}, global_step)
+                    run.log({"losses/actor_loss": actor_loss.item()}, global_step)
+                    run.log({"losses/qf1_values": qf1_a_values.mean().item()}, global_step)
+                    run.log({"charts/SPS": int(global_step / (time.time() - start_time))}, global_step)
                 print("SPS:", int(global_step / (time.time() - start_time)))
     envs.close()
     run.close()
