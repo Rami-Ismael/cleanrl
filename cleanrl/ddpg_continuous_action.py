@@ -7,7 +7,7 @@ from distutils.util import strtobool
 
 import gym
 import numpy as np
-from cleanrl.algos.opt import Adan, hAdam
+from algos.opt import Adan, hAdam
 import pybullet_envs  # noqa
 import torch
 import torch.nn as nn
@@ -107,7 +107,7 @@ class QNetwork(nn.Module):
                  quantize_activation_quantize_min:int = 0,
                  quantize_activation_quantize_max:int = 255,
                  quantize_activation_quantize_reduce_range:bool = False,
-                 quantize_activation_quantize_dtype:str = "quint8" , 
+                 quantize_activation_quantize_dtype:str = "qint8" , 
                  ):
         super().__init__()
         ## Save the quantize parameters
@@ -118,6 +118,7 @@ class QNetwork(nn.Module):
         self.quantize_activation = quantize_activation
         self.quantize_activation_bitwidth = quantize_activation_bitwidth
         self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
+        logging.info("The quantize_activation_quantize_dtype is {}".format(self.quantize_activation_quantize_dtype))
         ## Add the quantize the QAT param
         if quantize_activation or quantize_weight:
             self.model = nn.Sequential(
@@ -176,7 +177,7 @@ class QNetwork(nn.Module):
                         quant_max = (2 ** self.quantize_activation_bitwidth) // 2 - 1,
                         dtype =  self.get_dtype() ,
                         qscheme=torch.per_tensor_affine, 
-                        reduce_range=self.quanitize_activation_quantize_reduce_range
+                        reduce_range = False
                     )
                 return torch.ao.quantization.QConfig( activation = fq_activation, weight = fq_weights )
             else:
@@ -200,7 +201,7 @@ class Actor(nn.Module):
                  quantize_weight_bitwidth:int = 8,
                  quantize_activation:bool = False,
                  quantize_activation_bitwidth:int = 8,
-                 quantize_activation_quantize_dtype:str = "quint8" , 
+                 quantize_activation_quantize_dtype:str = "qint8" , 
                  ) :
         super().__init__()
         ## Save the quantize parameters
@@ -249,6 +250,44 @@ class Actor(nn.Module):
     def forward(self, x):
         x = self.model(x)
         return x * self.action_scale + self.action_bias
+    def fuse_modules(self):
+        if self.quantize_activation or self.quantize_weight:
+            self.model = torch.quantization.fuse_modules( self.model ,  [["1" , "2"] , ["3" , "4"]] , inplace=True) 
+            logging.info(f"Fuse layer , the model structure it's {self.model}")
+    def get_quantization_config(self):
+        activation = torch.nn.Identity()
+        weight = torch.nn.Identity()
+        if self.quantize_weight:
+            fq_weights = torch.quantization.FakeQuantize.with_args(
+                        observer = torch.quantization.MovingAverageMinMaxObserver , 
+                        quant_min = -(2 ** self.quantize_weight_bitwidth) // 2,
+                        quant_max=(2 ** self.quantize_weight_bitwidth) // 2 - 1,
+                        dtype = self.get_dtype(), 
+                        qscheme=torch.per_tensor_affine, 
+                        reduce_range=False)
+            if self.quantize_activation:
+                fq_activation = torch.quantization.FakeQuantize.with_args(
+                        observer = torch.quantization.MovingAverageMinMaxObserver , 
+                        quant_min = -(2 ** self.quantize_activation_bitwidth) // 2,
+                        quant_max = (2 ** self.quantize_activation_bitwidth) // 2 - 1,
+                        dtype =  self.get_dtype() ,
+                        qscheme=torch.per_tensor_affine, 
+                        reduce_range = False , 
+                    )
+                return torch.ao.quantization.QConfig( activation = fq_activation, weight = fq_weights )
+            else:
+                return torch.ao.quantization.QConfig(activation = activation, weight = fq_weights)
+    def size_of_model(self):
+        name_file = "temp.pt"
+        torch.save(self.model.state_dict(), name_file)
+        size =  os.path.getsize(name_file)/1e6
+        os.remove(name_file)
+        return size
+    def get_dtype(self):
+        if self.quantize_activation_bitwidth <= 8:
+            return getattr(torch, self.quantize_activation_quantize_dtype)
+        elif self.quantize_activation_bitwidth == 16:
+            return torch.int16
 
 
 if __name__ == "__main__":
@@ -287,30 +326,26 @@ if __name__ == "__main__":
     actor = Actor(envs , 
                   quantize_weight = args.quantize_weight,
                   quantize_weight_bitwidth = args.quantize_weight_bitwidth,
-                  quantization_activation = args.quantize_activation,
+                  quantize_activation = args.quantize_activation,
                   quantize_activation_bitwidth = args.quantize_activation_bitwidth,
-                  quantize_activation = args.quantize_activation_quantize_dtype,
                   ).to(device)
-    qf1 = QNetwork(envs
+    qf1 = QNetwork(envs , 
                   quantize_weight = args.quantize_weight,
                   quantize_weight_bitwidth = args.quantize_weight_bitwidth,
-                  quantization_activation = args.quantize_activation,
+                  quantize_activation = args.quantize_activation,
                   quantize_activation_bitwidth = args.quantize_activation_bitwidth,
-                  quantize_activation = args.quantize_activation_quantize_dtype,
                    ).to(device)
     qf1_target = QNetwork(envs,
                     quantize_weight = args.quantize_weight,
                   quantize_weight_bitwidth = args.quantize_weight_bitwidth,
-                  quantization_activation = args.quantize_activation,
+                  quantize_activation = args.quantize_activation,
                   quantize_activation_bitwidth = args.quantize_activation_bitwidth,
-                  quantize_activation = args.quantize_activation_quantize_dtype,
                           ).to(device)
-    target_actor = Actor(envs
+    target_actor = Actor(envs , 
                     quantize_weight = args.quantize_weight,
                   quantize_weight_bitwidth = args.quantize_weight_bitwidth,
-                  quantization_activation = args.quantize_activation,
+                  quantize_activation = args.quantize_activation,
                   quantize_activation_bitwidth = args.quantize_activation_bitwidth,
-                  quantize_activation = args.quantize_activation_quantize_dtype,
                          ).to(device)
     target_actor.load_state_dict(actor.state_dict())
     qf1_target.load_state_dict(qf1.state_dict())
