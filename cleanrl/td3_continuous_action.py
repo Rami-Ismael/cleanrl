@@ -317,12 +317,42 @@ if __name__ == "__main__":
     envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
-    actor = Actor(envs).to(device)
-    qf1 = QNetwork(envs).to(device)
-    qf2 = QNetwork(envs).to(device)
-    qf1_target = QNetwork(envs).to(device)
-    qf2_target = QNetwork(envs).to(device)
-    target_actor = Actor(envs).to(device)
+    actor = Actor(envs,
+                quantize_weight = args.quantize_weight,
+                quantize_weight_bitwidth = args.quantize_weight_bitwidth,
+                quantize_activation = args.quantize_activation,
+                quantize_activation_bitwidth = args.quantize_activation_bitwidth,
+                  ).to(device)
+    qf1 = QNetwork(envs, 
+                  quantize_weight = args.quantize_weight,
+                  quantize_weight_bitwidth = args.quantize_weight_bitwidth,
+                  quantize_activation = args.quantize_activation,
+                  quantize_activation_bitwidth = args.quantize_activation_bitwidth,
+                   ).to(device)
+    qf2 = QNetwork(envs, 
+                  quantize_weight = args.quantize_weight,
+                  quantize_weight_bitwidth = args.quantize_weight_bitwidth,
+                  quantize_activation = args.quantize_activation,
+                  quantize_activation_bitwidth = args.quantize_activation_bitwidth,
+                   ).to(device)
+    qf1_target = QNetwork(envs,
+                quantize_weight = args.quantize_weight,
+                  quantize_weight_bitwidth = args.quantize_weight_bitwidth,
+                  quantize_activation = args.quantize_activation,
+                  quantize_activation_bitwidth = args.quantize_activation_bitwidth,
+                          ).to(device)
+    qf2_target = QNetwork(envs , 
+                  quantize_weight = args.quantize_weight,
+                  quantize_weight_bitwidth = args.quantize_weight_bitwidth,
+                  quantize_activation = args.quantize_activation,
+                  quantize_activation_bitwidth = args.quantize_activation_bitwidth,
+                          ).to(device)
+    target_actor = Actor(envs , 
+                  quantize_weight = args.quantize_weight,
+                  quantize_weight_bitwidth = args.quantize_weight_bitwidth,
+                  quantize_activation = args.quantize_activation,
+                  quantize_activation_bitwidth = args.quantize_activation_bitwidth,
+                         ).to(device)
     target_actor.load_state_dict(actor.state_dict())
     qf1_target.load_state_dict(qf1.state_dict())
     qf2_target.load_state_dict(qf2.state_dict())
