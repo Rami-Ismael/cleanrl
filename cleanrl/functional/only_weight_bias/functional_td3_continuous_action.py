@@ -239,7 +239,7 @@ class Actor(nn.Module):
                 nn.ReLU(),
                 nn.Linear(256, 256),
                 nn.ReLU(),
-                nn.Linear(256, env.action_space.shape),
+                nn.Linear(256, np.prod(env.single_action_space.shape)),
                 nn.Tanh(),
             )
         self.register_buffer("action_scale", torch.FloatTensor((env.action_space.high - env.action_space.low) / 2.0))
