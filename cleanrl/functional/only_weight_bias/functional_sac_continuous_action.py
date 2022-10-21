@@ -358,7 +358,7 @@ class Actor(nn.Module):
 def sac_functional(
     
     
-    exp_name:str = "sac_continuous_actions",
+    exp_name:str = "sac_continuous_action",
     seed:int = 42,
     track : bool = True , 
     

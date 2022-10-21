@@ -291,7 +291,7 @@ class Actor(nn.Module):
 
 def ddpg_functional(
     seed:int = 0,
-    exp_name: str = "ddpg",
+    exp_name: str = "ddpg_continuous_action",
     track: bool = False,
    
     env_id: str = "HopperBulletEnv-v0",
@@ -309,6 +309,7 @@ def ddpg_functional(
     args.seed = seed
     args.exp_name = exp_name
     args.track = track
+    args.env_id = env_id
     
     args.total_timesteps = total_timesteps
     args.learning_rate = learning_rate

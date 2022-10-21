@@ -8,6 +8,7 @@ from distutils.util import strtobool
 
 import gym
 import numpy as np
+import optuna
 from algos.opt import Adan, hAdam
 import pybullet_envs  # noqa
 import torch
@@ -285,9 +286,21 @@ class Actor(nn.Module):
         elif self.quantize_activation_bitwidth == 16:
             return torch.int16
 
-
-if __name__ == "__main__":
+def td3_functional(
+    exp_name: str = "td3",
+    track: bool = False,
+    
+    total_time_steps: int = 1000000,
+    learning_rate: float = 3e-4,
+    
+    trial: optuna.trial.Trial = None,
+):
     args = parse_args()
+    args.exp_name = exp_name
+    args.track = track
+    
+    args.total_timesteps = total_time_steps
+    args.learning_rate = learning_rate
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
