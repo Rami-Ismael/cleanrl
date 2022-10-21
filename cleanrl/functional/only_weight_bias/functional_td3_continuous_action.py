@@ -213,7 +213,7 @@ class Actor(nn.Module):
         if quantize_activation or quantize_weight:
             self.model = nn.Sequential(
                 torch.quantization.QuantStub(),
-                nn.Linear(env.observation_space.shape[0], 256),
+                nn.Linear( np.array(env.single_observation_space.shape).prod(), 256),
                 nn.ReLU(),
                 nn.Linear(256, 256),
                 nn.ReLU(),
@@ -379,15 +379,22 @@ def td3_functional(
     target_actor.load_state_dict(actor.state_dict())
     qf1_target.load_state_dict(qf1.state_dict())
     qf2_target.load_state_dict(qf2.state_dict())
+    q_optimizer
     optimizer_of_choice = None
     if args.optimizer == "Adam":
         optimizer_of_choice = torch.optim.Adam
+        q_optimizer = optimizer_of_choice(list(qf1.parameters()) + list(qf2.parameters()), lr=args.learning_rate)
+        actor_optimizer = optimizer_of_choice(list(actor.parameters()), lr=args.learning_rate)
     elif args.optimizer == "hAdam":
         optimizer_of_choice = hAdam
     elif args.optizer == "Adan":
         optimizer_of_choice =  Adan
+    elif args.optimizer == "Lookahead":
+        optimizer_of_choice = torch.optim.Adam
     q_optimizer = optimizer_of_choice(list(qf1.parameters()) + list(qf2.parameters()), lr=args.learning_rate)
     actor_optimizer = optimizer_of_choice(list(actor.parameters()), lr=args.learning_rate)
+    if args.optimizer == "Lookahead":
+        q_optimizer = Lookahead(q_optimizer)
     epsiodic_return = []
 
     envs.single_observation_space.dtype = np.float32
