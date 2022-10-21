@@ -217,7 +217,7 @@ class Actor(nn.Module):
                 nn.ReLU(),
                 nn.Linear(256, 256),
                 nn.ReLU(),
-                nn.Linear(256, env.action_space.shape[0]),
+                nn.Linear(256, np.prod(env.single_action_space.shape)),
                 nn.Tanh(),
                 torch.quantization.DeQuantStub(),
             )
