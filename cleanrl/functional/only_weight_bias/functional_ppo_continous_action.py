@@ -485,3 +485,6 @@ def ppo_functional(
     logging.info(f"Model converted to 8 bit model and the size of the model  is {agent.get_size()}")
     logging.info(f"The model is {agent}")
     envs.close()
+    if track:
+        run.save("test.log")
+        run.finish()
