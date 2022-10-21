@@ -118,7 +118,7 @@ class QNetwork(nn.Module):
         if quantize_activation or quantize_weight:
             self.model = nn.Sequential(
                 torch.quantization.QuantStub(),
-                nn.Linear(env.observation_space.shape[0], 256),
+                nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256),
                 nn.ReLU(),
                 nn.Linear(256, 256),
                 nn.ReLU(),
@@ -144,7 +144,7 @@ class QNetwork(nn.Module):
             logging.info(f"The model is {self.model}")
         else:
             self.model = nn.Sequential(
-                nn.Linear(env.observation_space.shape[0], 256),
+                nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256),
                 nn.ReLU(),
                 nn.Linear(256, 256),
                 nn.ReLU(),
@@ -379,8 +379,9 @@ def td3_functional(
     target_actor.load_state_dict(actor.state_dict())
     qf1_target.load_state_dict(qf1.state_dict())
     qf2_target.load_state_dict(qf2.state_dict())
-    q_optimizer
     optimizer_of_choice = None
+    q_optimizer = None
+    actor_optimizer = None
     if args.optimizer == "Adam":
         optimizer_of_choice = torch.optim.Adam
         q_optimizer = optimizer_of_choice(list(qf1.parameters()) + list(qf2.parameters()), lr=args.learning_rate)
@@ -391,10 +392,7 @@ def td3_functional(
         optimizer_of_choice =  Adan
     elif args.optimizer == "Lookahead":
         optimizer_of_choice = torch.optim.Adam
-    q_optimizer = optimizer_of_choice(list(qf1.parameters()) + list(qf2.parameters()), lr=args.learning_rate)
-    actor_optimizer = optimizer_of_choice(list(actor.parameters()), lr=args.learning_rate)
-    if args.optimizer == "Lookahead":
-        q_optimizer = Lookahead(q_optimizer)
+        
     epsiodic_return = []
 
     envs.single_observation_space.dtype = np.float32
