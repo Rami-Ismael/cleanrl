@@ -388,8 +388,12 @@ def td3_functional(
         actor_optimizer = optimizer_of_choice(list(actor.parameters()), lr=args.learning_rate)
     elif args.optimizer == "hAdam":
         optimizer_of_choice = hAdam
+        q_optimizer = optimizer_of_choice(list(qf1.parameters()) + list(qf2.parameters()), lr=args.learning_rate)
+        actor_optimizer = optimizer_of_choice(list(actor.parameters()), lr=args.learning_rate)
     elif args.optizer == "Adan":
         optimizer_of_choice =  Adan
+        q_optimizer = optimizer_of_choice(list(qf1.parameters()) + list(qf2.parameters()), lr=args.learning_rate)
+        actor_optimizer = optimizer_of_choice(list(actor.parameters()), lr=args.learning_rate)
     elif args.optimizer == "Lookahead":
         optimizer_of_choice = torch.optim.Adam
         
@@ -484,12 +488,12 @@ def td3_functional(
                 print("SPS:", int(global_step / (time.time() - start_time)))
                 if track:
                     run.log({"charts/SPS": int(global_step / (time.time() - start_time))},  global_step)
-                    run.log({"charts/qf1_values": qf1_a_values.mean().item()},  global_step)
-                    run.log({"charts/qf2_values": qf2_a_values.mean().item()},  global_step)
-                    run.log({"charts/qf1_loss": qf1_loss.item()}, global_step)
-                    run.log({"charts/qf2_loss": qf2_loss.item()},  global_step)
-                    run.log({"charts/qf_loss": qf_loss.item() / 2.0}, global_step)
-                    run.log({"charts/actor_loss": actor_loss.item()}, global_step)
+                    run.log({"losses/qf1_values": qf1_a_values.mean().item()},  global_step)
+                    run.log({"losses/qf2_values": qf2_a_values.mean().item()},  global_step)
+                    run.log({"losses/qf1_loss": qf1_loss.item()}, global_step)
+                    run.log({"losses/qf2_loss": qf2_loss.item()},  global_step)
+                    run.log({"losses/qf_loss": qf_loss.item() / 2.0}, global_step)
+                    run.log({"losses/actor_loss": actor_loss.item()}, global_step)
     envs.close()
     if args.track:
         run.save("tests.log")

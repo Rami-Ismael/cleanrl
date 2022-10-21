@@ -3,7 +3,7 @@ import sys
 
 # caution: path[0] is reserved for script path (or '' in REPL)
 sys.path.insert(1, '../cleanrl')
-from cleanrl.functional.only_weight_bias.functional_td3_continuous_action import td3_functional
+from cleanrl.functional.only_weight_bias.functional_ppo_continous_action import ppo_functional
 
 import os
 import runpy
@@ -26,7 +26,7 @@ for env_id in env_ids:
     for optimizer in optimizers:
         for quantize_activation_bitwidth , quantize_weight_bitwidth in zip( [  8 , 6 ,  4, 2, 1] , [  8 , 6 , 4, 2, 1] ):
             for seed in range( 0 , 2):
-                average_episode_return    = td3_functional(
+                average_episode_return    = ppo_functional(
                     seed = int(seed),
                     env_id=env_id,
                     total_timesteps = 200_000,

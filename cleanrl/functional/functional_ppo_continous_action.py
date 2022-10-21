@@ -9,6 +9,7 @@ from turtle import shape
 
 import gym
 import numpy as np
+import optuna
 import pybullet_envs  # noqa
 import torch
 import torch.nn as nn
@@ -131,6 +132,7 @@ class Agent(nn.Module):
                  ):
         super().__init__()
         # Quantize Param Weight
+        self.envs = envs
         self.quantize_weight = quantize_weight
         self.quantize_weight_bitwidth = quantize_weight_bitwidth
         ## Quantize Param Activation
@@ -217,7 +219,7 @@ class Agent(nn.Module):
         return self.model_size
     def inference(self, x):
         x = torch.randint(
-            np.array(envs.single_observation_space.shape).prod(), (1, 1), dtype=torch.float32
+            np.array(self.envs.single_observation_space.shape).prod(), (1, 1), dtype=torch.float32
         )
         
         num_samples = 200
@@ -260,10 +262,33 @@ class Agent(nn.Module):
         elif self.quantize_activation_bitwidth == 16:
             return torch.int16
 
-
-if __name__ == "__main__":
+def ppo_functional(
+    seed:int = 0,
+    exp_name: str = "ppo",
+    track: bool = False,
+   
+    env_id: str = "HopperBulletEnv-v0",
+    total_timesteps: int = 1000000,
+    learning_rate: float = 3e-4,
+    
+    quantize_weight_bitwidth:int = 8,
+    quantize_activation_bitwidth:int = 8,
+    
+    optimizer: str = "Adam",
+):
     args = parse_args()
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    args.seed = seed
+    args.exp_name = exp_name
+    args.track = track
+    
+    args.env_id = env_id
+    
+    args.total_timesteps = total_timesteps
+    args.learning_rate = learning_rate
+    
+    args.quantize_weight_bitwidth = quantize_weight_bitwidth
+    args.quantize_activation_bitwidth = quantize_activation_bitwidth
+    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"if __name__ == "__main__":
     if args.track:
         import wandb
 
@@ -464,4 +489,3 @@ if __name__ == "__main__":
     logging.info(f"Model converted to 8 bit model and the size of the model  is {agent.get_size()}")
     logging.info(f"The model is {agent}")
     envs.close()
-    writer.close()
