@@ -1,3 +1,7 @@
+from random import random
+import sys
+# caution: path[0] is reserved for script path (or '' in REPL)
+sys.path.insert(1, '../cleanrl')
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/td3/#td3_continuous_actionpy
 import argparse
 from copy import copy
@@ -318,13 +322,37 @@ class Actor(nn.Module):
             return torch.int16
 
 
-if __name__ == "__main__":
+def td3_functional(
+    seed:int = 0,
+    exp_name: str = "td3",
+    track: bool = False,
+   
+    env_id: str = "HopperBulletEnv-v0",
+    total_timesteps: int = 1000000,
+    learning_rate: float = 3e-4,
+    
+    quantize_weight_bitwidth:int = 8,
+    quantize_activation_bitwidth:int = 8,
+    
+    optimizer: str = "Adam",
+):
     args = parse_args()
+    args.seed = seed
+    args.exp_name = exp_name
+    args.track = track
+    
+    args.env_id = env_id
+    
+    args.total_timesteps = total_timesteps
+    args.learning_rate = learning_rate
+    
+    args.quantize_weight_bitwidth = quantize_weight_bitwidth
+    args.quantize_activation_bitwidth = quantize_activation_bitwidth
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
 
-        wandb.init(
+        run  = wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
             sync_tensorboard=True,
@@ -333,12 +361,6 @@ if __name__ == "__main__":
             monitor_gym=True,
             save_code=True,
         )
-    writer = SummaryWriter(f"runs/{run_name}")
-    writer.add_text(
-        "hyperparameters",
-        "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
-    )
-
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -503,3 +525,4 @@ if __name__ == "__main__":
 
     envs.close()
     writer.close()
+

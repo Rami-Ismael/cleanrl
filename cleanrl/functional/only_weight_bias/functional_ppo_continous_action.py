@@ -86,6 +86,9 @@ def parse_args():
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="qint8")
     
+    ## Optimizer
+    parser.add_argument("--optimizer", type=str, default="Adam")
+    
     
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -287,6 +290,9 @@ def ppo_functional(
     
     args.quantize_weight_bitwidth = quantize_weight_bitwidth
     args.quantize_activation_bitwidth = quantize_activation_bitwidth
+    
+    args.optimizer = optimizer
+    
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb

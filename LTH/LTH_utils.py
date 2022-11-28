@@ -96,16 +96,15 @@ def prune_mlp(mlp, prune_ratio=0.3, method="l1"):
         Pruning method to use.
     """
     if isinstance(prune_ratio, float):
-        prune_ratios = [prune_ratio] * len(mlp.module_list)
+        prune_ratios = [prune_ratio] * len(mlp.model)
     elif isinstance(prune_ratio, list):
-        if len(prune_ratio) != len(mlp.module_list):
+        if len(prune_ratio) != len(mlp.model):
             raise ValueError("Incompatible number of prune ratios provided")
-
         prune_ratios = prune_ratio
     else:
         raise TypeError
 
-    for prune_ratio, linear in zip(prune_ratios, mlp.module_list):
+    for prune_ratio, linear in zip(prune_ratios, mlp.model):
         prune_linear(linear, prune_ratio=prune_ratio, method=method)
 
 
@@ -196,7 +195,7 @@ def copy_weights_mlp(mlp_unpruned, mlp_pruned):
     mlp_pruned : MLP
         MLP model that was pruned.
     """
-    zipped = zip(mlp_unpruned.module_list, mlp_pruned.module_list)
+    zipped = zip(mlp_unpruned.model, mlp_pruned.model)
 
     for linear_unpruned, linear_pruned in zipped:
         copy_weights_linear(linear_unpruned, linear_pruned)
@@ -217,7 +216,7 @@ def compute_stats(mlp):
     total_params = 0
     total_pruned_params = 0
 
-    for layer_ix, linear in enumerate(mlp.module_list):
+    for layer_ix, linear in enumerate(mlp.model):
         assert check_pruned_linear(linear)
 
         weight_mask = linear.weight_mask
