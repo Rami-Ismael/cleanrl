@@ -108,7 +108,7 @@ def make_env(env_id, seed, idx, capture_video, run_name):
         if capture_video:
             if idx == 0:
                 env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
-        env.seed(seed)
+        env.reset(  seed=seed )
         env.action_space.seed(seed)
         env.observation_space.seed(seed)
         return env
@@ -219,11 +219,13 @@ def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
 
 
 def dqn_functional(
-    exp_name: str = "dqn",
     seed:int = 42,
     torch_deterministic: bool = True,
     cuda: bool = False,
     track: bool = False,
+    
+    wandb_entity: str = "compress_rl",
+    wandb_project: str = "cleanrl",
     
     env_id: str = "CartPole-v1",
     total_timesteps: int = 500_000,
@@ -258,6 +260,9 @@ def dqn_functional(
     args.cuda = cuda
     args.track = track
     args.env_id = env_id
+    ## Weight and Bias Track
+    args.wandb_entity = wandb_entity
+    args.wandb_project = wandb_project
     # Off_policy RL specific arguments  Deep Q Learning
     args.total_timesteps = total_timesteps
     args.learning_rate = learning_rate
@@ -374,7 +379,8 @@ def dqn_functional(
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 max_episode_return.append(info["episode"]["r"])
-                trial.report(info["episode"]["r"], global_step)
+                if trial is not None:
+                    trial.report(info["episode"]["r"],  step = global_step)
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                 writer.add_scalar("charts/epsilon", epsilon, global_step)
                 break
@@ -414,11 +420,22 @@ def dqn_functional(
                 target_network.load_state_dict(q_network.state_dict())
     
     ## Convert the model to 8 bit
-    q_network.to("cpu")
-    q_network.eval()
-    torch.ao.quantization.convert(q_network, inplace=True)
-    logging.info(f"Model converted to 8 bit and the size of the model is {size_of_model(q_network)}")
-    logging.info(f"The q network is {q_network}")
-    envs.close()
-    writer.close()
+    if quantize_weight or quantize_activation:
+        q_network.to("cpu")
+        q_network.eval()
+        torch.ao.quantization.convert(q_network, inplace=True)
+        logging.info(f"Model converted to 8 bit and the size of the model is {size_of_model(q_network)}")
+        logging.info(f"The q network is {q_network}")
+        envs.close()
+        writer.close()
+        if run is not None:
+            run.finish()
+    else:
+         envs.close()
+         writer.close()
+         logging.info(f"The q network is {q_network}")
+         ## Save the PyTorch Model
+         torch.save(q_network.state_dict(), "q_network.pt")
+         if run is not None:
+            run.finish()
     return run ,  np.average(max_episode_return)

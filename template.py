@@ -126,5 +126,6 @@ def select_optmizer(args):
     elif args.optimizer == "Adan":
         return Adan
     elif args.optimizer == "lookahead":
+        ValueError(f"{args.optimizer} is not supported")
     else:
         ValueError(f"{args.optimizer} is not supported")
