@@ -429,6 +429,7 @@ def dqn_functional(
         envs.close()
         writer.close()
         if run is not None:
+            wandb.finish()
             run.finish()
     else:
          envs.close()
@@ -437,5 +438,6 @@ def dqn_functional(
          ## Save the PyTorch Model
          torch.save(q_network.state_dict(), "q_network.pt")
          if run is not None:
+            wandb.finish()
             run.finish()
     return run ,  np.average(max_episode_return)
