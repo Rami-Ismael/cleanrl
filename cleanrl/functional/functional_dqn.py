@@ -6,6 +6,12 @@ import random
 import time
 from distutils.util import strtobool
 import logging
+import os
+from dotenv import load_dotenv
+
+from huggingface_hub import HfApi
+
+load_dotenv()
 
 
 import gym
@@ -440,4 +446,21 @@ def dqn_functional(
          if run is not None or track:
             wandb.finish()
             run.finish()
+    ## Create the A new Repo in Hugging Face Hub
+    HF_KEY = os.getenv("HF_KEY")
+
+    api = HfApi()
+    api.create_repo(token=HF_KEY, 
+                    repo_id="Rami"+run_name,
+                    exist_ok=True,
+                    repo_type="model",
+    )
+    ## Upload the model to Hugging Face Hub
+    api.upload_file(
+        path_in_repo="q_network.pt",
+        path_or_fileobj="q_network.pt",
+        repo_id="Rami"+run_name,
+        repo_type="model",
+        token=HF_KEY,
+    )
     return run ,  np.average(max_episode_return)
