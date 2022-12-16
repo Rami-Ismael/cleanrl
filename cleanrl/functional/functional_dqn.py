@@ -428,7 +428,7 @@ def dqn_functional(
         logging.info(f"The q network is {q_network}")
         envs.close()
         writer.close()
-        if run is not None:
+        if run is not None or track:
             wandb.finish()
             run.finish()
     else:
@@ -437,7 +437,7 @@ def dqn_functional(
          logging.info(f"The q network is {q_network}")
          ## Save the PyTorch Model
          torch.save(q_network.state_dict(), "q_network.pt")
-         if run is not None:
+         if run is not None or track:
             wandb.finish()
             run.finish()
     return run ,  np.average(max_episode_return)
