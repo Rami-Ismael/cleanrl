@@ -384,7 +384,7 @@ def dqn_functional(
             if "episode" in info.keys():
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"],  global_step)
-                run.log(data = {"charts/episodic_return": info["episode"]["r"]}   ,  global_step)
+                run.log(data = {"charts/episodic_return": info["episode"]["r"]}  , step = global_step)
                 max_episode_return.append(info["episode"]["r"])
                 if trial is not None:
                     trial.report(info["episode"]["r"],  step = global_step)
@@ -393,6 +393,16 @@ def dqn_functional(
                 writer.add_scalar("charts/epsilon", epsilon, global_step)
                 run.log({"charts/epsilon": epsilon  }, step = global_step)
                 break
+            ## Record The action distribution of the DQN agent at it last 1000 global steps
+            try:
+                if global_step > args.total_timesteps - 5:
+                    writer.add_histogram("charts/action_distribution", actions, global_step)
+                    run.log({"charts/action_distribution": actions  }, step = global_step)
+            except Exception as e:
+                print("Error in logging action distribution: which is a Similar Practice for QuaRL Papers", e)
+                pass
+                
+            
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `terminal_observation`
         real_next_obs = next_obs.copy()
