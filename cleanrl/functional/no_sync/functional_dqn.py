@@ -495,6 +495,15 @@ def dqn_functional(
             f.write(f"- num_envs: {args.num_envs} \n")
             f.write(f"- num_steps: {args.num_steps} \n")
             f.write(f"- num_iterations: {args.num_iterations} \n")
+        # Upload the Readme file / Model Card to the Hugging Face Hub
+        api.upload_file(
+            path_in_repo="README.md",
+            path_or_fileobj="README.md",
+            repo_id="Rami/"+run_name,
+            repo_type="model",
+            token=HF_KEY,
+        )
+        print("Model uploaded to Hugging Face Hub")
     except Exception as e:
         print(e)
     return run ,  np.average(max_episode_return)
