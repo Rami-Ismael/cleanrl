@@ -454,20 +454,23 @@ def dqn_functional(
             wandb.finish()
             run.finish()
     ## Create the A new Repo in Hugging Face Hub
-    HF_KEY = os.getenv("HF_KEY")
+    try:
+        HF_KEY = os.getenv("HF_KEY")
 
-    api = HfApi()
-    api.create_repo(token=HF_KEY, 
-                    repo_id="Rami"+run_name,
-                    exist_ok=True,
-                    repo_type="model",
-    )
-    ## Upload the model to Hugging Face Hub
-    api.upload_file(
-        path_in_repo="q_network.pt",
-        path_or_fileobj="q_network.pt",
-        repo_id="Rami"+run_name,
-        repo_type="model",
-        token=HF_KEY,
-    )
+        api = HfApi()
+        api.create_repo(token=HF_KEY, 
+                        repo_id="Rami/"+run_name,
+                        exist_ok=True,
+                        repo_type="model",
+        )
+        ## Upload the model to Hugging Face Hub
+        api.upload_file(
+            path_in_repo="q_network.pt",
+            path_or_fileobj="q_network.pt",
+            repo_id="Rami/"+run_name,
+            repo_type="model",
+            token=HF_KEY,
+        )
+    except Exception as e:
+        print(e)
     return run ,  np.average(max_episode_return)
