@@ -10,6 +10,7 @@ import os
 from dotenv import load_dotenv
 
 from huggingface_hub import HfApi
+import huggingface_hub
 
 load_dotenv()
 
@@ -25,6 +26,7 @@ from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 from cleanrl.algos.opt import Adan, hAdam
 from cleanrl.argument_utils import get_datatype
+from rich import print
 
 from template import get_quantization_config
 
@@ -290,7 +292,7 @@ def dqn_functional(
     args.quantize_activation_bitwidth = quantize_activation_bitwidth
     args.quantize_activation_quantize_min = quantize_activation_quantize_min
     args.quantize_activation_quantize_max = quantize_activation_quantize_max
-    args.quanitize_activation_quantize_reduce_range = quanitize_activation_quantize_reduce_range
+    args.quantize_activation_quantize_reduce_range = quanitize_activation_quantize_reduce_range
     args.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
     
     args.optimizer = optimizer
@@ -393,7 +395,7 @@ def dqn_functional(
                 writer.add_scalar("charts/epsilon", epsilon, global_step)
                 run.log({"charts/epsilon": epsilon  }, step = global_step)
                 break
-            ## Record The action distribution of the DQN agent at it last 1000 global steps
+            ## Record The action distribution of the DQN agent at it last 5 global steps
             try:
                 if global_step > args.total_timesteps - 5:
                     writer.add_histogram("charts/action_distribution", actions, global_step)
@@ -480,6 +482,9 @@ def dqn_functional(
             repo_type="model",
             token=HF_KEY,
         )
+    except Exception as e:
+        print("Error in creating the repo in Hugging Face Hub", e)
+    try:
         ## Create the model card for the DQN model applied to the multiple discrete environments
         #1. Create a Readme file
         with open("README.md", "w") as f:
@@ -495,15 +500,17 @@ def dqn_functional(
             f.write(f"### Training Hyperparameters \n")
             f.write(f"``` \n")
             f.write("The folloing hyperparameters were used during training: \n")
-            f.write(f"- learning_rate: {args.learning_rate} \n")
-            f.write(f"- batch_size: {args.batch_size} \n")
-            f.write(f"- gamma: {args.gamma} \n")
-            f.write(f"- learning_starts: {args.learning_starts} \n")
-            f.write(f"- train_frequency: {args.train_frequency} \n")
-            f.write(f"- target_network_frequency: {args.target_network_frequency} \n")
-            f.write(f"- num_envs: {args.num_envs} \n")
-            f.write(f"- num_steps: {args.num_steps} \n")
-            f.write(f"- num_iterations: {args.num_iterations} \n")
+            for key, value in vars(args).items():
+                if "quantize" not in key:
+                    f.write(f"- {key}: {value} \n")
+            f.write(f"``` \n")
+            ## Framework and version
+            f.write(f"### Framework and version \n")
+            f.write(f"``` \n")
+            f.write(f"Pytorch {torch.__version__} \n")
+            f.write(f"gym {gym.__version__} \n")
+            f.write(f"Weights and Biases {wandb.__version__} \n")
+            f.write(f"Hugging Face Hub {huggingface_hub.__version__} \n")
         # Upload the Readme file / Model Card to the Hugging Face Hub
         api.upload_file(
             path_in_repo="README.md",
@@ -513,6 +520,17 @@ def dqn_functional(
             token=HF_KEY,
         )
         print("Model uploaded to Hugging Face Hub")
+    except Exception as e:
+        print(e)
+    ## Upload the Tensorboard logs to the Hugging Face Hub
+    try:
+        api.upload_file(
+            path_in_repo="runs/"+run_name,
+            path_or_fileobj="runs/"+run_name,
+            repo_id="Rami/"+run_name,
+            repo_type="model",
+            token=HF_KEY,
+        )
     except Exception as e:
         print(e)
     return run ,  np.average(max_episode_return)
