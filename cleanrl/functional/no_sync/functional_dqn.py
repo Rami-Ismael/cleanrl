@@ -311,7 +311,6 @@ def dqn_functional(
             name=run_name,
             monitor_gym=True,
             save_code=True,
-            pytorch = True,
         )
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
@@ -384,8 +383,8 @@ def dqn_functional(
         for info in infos:
             if "episode" in info.keys():
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                writer.add_scalar("charts/episodic_return", info["episode"]["r"], step = global_step)
-                run.log({"charts/episodic_return": info["episode"]["r"]}  , step = global_step)
+                writer.add_scalar("charts/episodic_return", info["episode"]["r"],  global_step)
+                run.log(data = {"charts/episodic_return": info["episode"]["r"]}   ,  global_step)
                 max_episode_return.append(info["episode"]["r"])
                 if trial is not None:
                     trial.report(info["episode"]["r"],  step = global_step)
