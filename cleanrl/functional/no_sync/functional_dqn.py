@@ -471,6 +471,30 @@ def dqn_functional(
             repo_type="model",
             token=HF_KEY,
         )
+        ## Create the model card for the DQN model applied to the multiple discrete environments
+        #1. Create a Readme file
+        with open("README.md", "w") as f:
+            f.write(f"DQN model applied to the this discrete environments {env_id} \n")
+            ## Add the model Description
+            f.write(f"## Model Description \n")
+            f.write(f"The model was trained from the CleanRl library using the DQN algorithm \n")
+            ## Add Intended Use & Limitation
+            f.write(f"## Intended Use & Limitation \n")
+            f.write(f"The model is intended to be used for the following environments {env_id} \n and understand the implication of Quantization on this type of model from a pretrained state")
+            ## Add Training Procdure
+            f.write(f"## Training Procdure \n")
+            f.write(f"### Training Hyperparameters \n")
+            f.write(f"``` \n")
+            f.write("The folloing hyperparameters were used during training: \n")
+            f.write(f"- learning_rate: {args.learning_rate} \n")
+            f.write(f"- batch_size: {args.batch_size} \n")
+            f.write(f"- gamma: {args.gamma} \n")
+            f.write(f"- learning_starts: {args.learning_starts} \n")
+            f.write(f"- train_frequency: {args.train_frequency} \n")
+            f.write(f"- target_network_frequency: {args.target_network_frequency} \n")
+            f.write(f"- num_envs: {args.num_envs} \n")
+            f.write(f"- num_steps: {args.num_steps} \n")
+            f.write(f"- num_iterations: {args.num_iterations} \n")
     except Exception as e:
         print(e)
     return run ,  np.average(max_episode_return)
