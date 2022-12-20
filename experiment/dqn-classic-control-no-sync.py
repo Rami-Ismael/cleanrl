@@ -33,6 +33,6 @@ for env_id in dicrete_box_envs:
                 quantize_activation = False,
                 wandb_entity = "compress_rl" , 
                 wandb_project="cleanrl",
-                trial = None
+                trial = None , 
                 capture_video= True,
             )
