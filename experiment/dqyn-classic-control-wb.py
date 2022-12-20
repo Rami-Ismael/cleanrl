@@ -11,16 +11,17 @@ This code gaols it to train a DQN agent on the
 dicrete classic control environments and upload to hugging Face
 '''
 
-dicrete_box_envs = [ "CartPole-v1" , "MountainCar-v0" , "Acrobot-v1" ]
+#dicrete_box_envs = [ "CartPole-v1" , "MountainCar-v0" , "Acrobot-v1" ]
+dicrete_box_envs = [ "CartPole-v1" ]
 
-optimizers = [ "Adam" , "Adan" , "hAdam" ]
+#optimizers = [ "Adam" , "Adan" , "hAdam" ]
+optimizers = ["Adam"]
 
 
 for env_id in dicrete_box_envs:
     for optimizer in optimizers:
-        for seed in range( 0 , 3):
             output = dqn_functional(
-                seed = int(seed),
+                seed = 0,
                 env_id=env_id,
                 track = True,
                 optimizer = optimizer , 

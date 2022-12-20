@@ -27,6 +27,7 @@ from torch.utils.tensorboard import SummaryWriter
 from cleanrl.algos.opt import Adan, hAdam
 from cleanrl.argument_utils import get_datatype
 from rich import print
+import sys
 
 from template import get_quantization_config
 
@@ -104,6 +105,12 @@ def parse_args():
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
     ## Other papers algorithm and ideas
     parser.add_argument("--optimizer" , type=str, default="Adam")
+    ### Optimizer specific arguments for Adan
+    parser.add_argument('--max-grad-norm', type=float, default=0.0, help='if the l2 norm is large than this hyper-parameter, then we clip the gradient  (default: 0.0, no gradient clip)')
+    parser.add_argument('--weight-decay', type=float, default=0.02,  help='weight decay, similar one used in AdamW (default: 0.02)')
+    parser.add_argument('--opt-eps', default=None, type=float, metavar='EPSILON', help='optimizer epsilon to avoid the bad case where second-order moment is zero (default: None, use opt default 1e-8 in adan)')
+    parser.add_argument('--opt-betas', default=None, type=float, nargs='+', metavar='BETA', help='optimizer betas in Adan (default: None, use opt default [0.98, 0.92, 0.99] in Adan)')
+    parser.add_argument('--no-prox', action='store_true', default=False, help='whether perform weight decay like AdamW (default=False)')
     args = parser.parse_args()
     # fmt: on
     return args
@@ -258,6 +265,8 @@ def dqn_functional(
     quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
     
     optimizer:str = "Adam",
+    
+    capture_video:bool = False,
    
    trial = optuna.trial.Trial,
 ):
@@ -482,35 +491,43 @@ def dqn_functional(
             repo_type="model",
             token=HF_KEY,
         )
+        print("Model uploaded to Hugging Face Hub")
     except Exception as e:
         print("Error in creating the repo in Hugging Face Hub", e)
     try:
         ## Create the model card for the DQN model applied to the multiple discrete environments
         #1. Create a Readme file
         with open("README.md", "w") as f:
+            ## Add the YAML Section in the ReadMe file
+            f.write(f"--- \n")
+            f.write(f"license: apache-2.0 \n")
+            f.write(f"--- \n")
+            ## Read the model description
             f.write(f"DQN model applied to the this discrete environments {env_id} \n")
             ## Add the model Description
             f.write(f"## Model Description \n")
-            f.write(f"The model was trained from the CleanRl library using the DQN algorithm \n")
+            f.write(f"The model was trained from the CleanRl library using the DQN algorithm on {env_id}\n")
             ## Add Intended Use & Limitation
             f.write(f"## Intended Use & Limitation \n")
-            f.write(f"The model is intended to be used for the following environments {env_id} \n and understand the implication of Quantization on this type of model from a pretrained state")
+            f.write(f"The model is intended to be used for the following environments {env_id} \n and understand the implication of Quantization on this type of model from a pretrained state\n")
             ## Add Training Procdure
             f.write(f"## Training Procdure \n")
             f.write(f"### Training Hyperparameters \n")
-            f.write(f"``` \n")
             f.write("The folloing hyperparameters were used during training: \n")
             for key, value in vars(args).items():
                 if "quantize" not in key:
                     f.write(f"- {key}: {value} \n")
-            f.write(f"``` \n")
             ## Framework and version
             f.write(f"### Framework and version \n")
-            f.write(f"``` \n")
-            f.write(f"Pytorch {torch.__version__} \n")
+            f.write(f"Pytorch {torch.__version__} \n\n")
             f.write(f"gym {gym.__version__} \n")
             f.write(f"Weights and Biases {wandb.__version__} \n")
             f.write(f"Hugging Face Hub {huggingface_hub.__version__} \n")
+            f.write(f"Python Version {sys.version} \n")
+            ## Citation Section
+            f.write(f"## Citation \n")
+            f.write(f"```bibtex \n")
+            f.write(f'``` \n')
         # Upload the Readme file / Model Card to the Hugging Face Hub
         api.upload_file(
             path_in_repo="README.md",
@@ -519,18 +536,31 @@ def dqn_functional(
             repo_type="model",
             token=HF_KEY,
         )
-        print("Model uploaded to Hugging Face Hub")
+        print("Model Card uploaded to Hugging Face Hub")
     except Exception as e:
         print(e)
     ## Upload the Tensorboard logs to the Hugging Face Hub
     try:
-        api.upload_file(
+        api.upload_folder(
+            folder_path="runs/"+run_name,
             path_in_repo="runs/"+run_name,
-            path_or_fileobj="runs/"+run_name,
             repo_id="Rami/"+run_name,
             repo_type="model",
             token=HF_KEY,
         )
+        print("Tensorboard logs uploaded to Hugging Face Hub")
+    except Exception as e:
+        print(e)
+    ## The capture video of the agent playing the game will be uploaded to the Hugging Face Hub
+    try:
+        api.upload_folder(
+            folder_path="videos/"+run_name,
+            path_in_repo="videos/"+run_name,
+            repo_id="Rami/"+run_name,
+            repo_type="model",
+            token=HF_KEY,
+        )
+        print("Videos uploaded to Hugging Face Hub")
     except Exception as e:
         print(e)
     return run ,  np.average(max_episode_return)
