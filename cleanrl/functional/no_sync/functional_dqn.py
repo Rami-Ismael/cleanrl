@@ -305,7 +305,8 @@ def dqn_functional(
     args.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
     
     args.optimizer = optimizer
-    
+    if "functional_" in args.exp_name:
+        args.exp_name = args.exp_name.replace("functional_", "")
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
         
     
@@ -341,13 +342,6 @@ def dqn_functional(
     # env setup
     envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
-    optimizer_of_choice =  None
-    if args.optimizer == 'Adam':
-        optimizer_of_choice = torch.optim.Adam
-    elif args.optimizer == "hAdam":
-        optimizer_of_choice = hAdam
-    elif args.optimizer == 'Adan':
-        optimizer_of_choice =   Adan
     q_network = QNetwork(
                         env = envs,
                         quantize_weight = args.quantize_weight,
@@ -356,7 +350,14 @@ def dqn_functional(
                         quantize_activation_bitwidth =  args.quantize_activation_bitwidth,
                          ).to(device)
     logging.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
-    optimizer = optimizer_of_choice(q_network.parameters(), lr=args.learning_rate)
+    optimizer =  None
+    if args.optimizer == 'Adam':
+        optimizer = torch.optim.Adam(q_network.parameters(), lr=args.learning_rate)
+    elif args.optimizer == "hAdam":
+        optimizer = hAdam(q_network.parameters(), lr=args.learning_rate)
+    elif args.optimizer == 'Adan':
+        ## There is not weight decay in Adam implementation of DQN , there is no need to add Weight decay in Adan , 
+        optimizer = Adan(q_network.parameters(), lr=args.learning_rate , )
     target_network =    QNetwork(
                         env = envs,
                         quantize_weight = args.quantize_weight,
@@ -527,6 +528,13 @@ def dqn_functional(
             ## Citation Section
             f.write(f"## Citation \n")
             f.write(f"```bibtex \n")
+            ### CleanRL citation 
+            ### Optimizer Citation
+            ### Weight and Bias Citation
+            ### PyTorch Citation
+            ### Human-level control through deep reinforcement learningDQN citation
+            f.write("@article{mnih2013playing, \n")
+            f.write("title={Playing atari with deep reinforcement learning}, \n")
             f.write(f'``` \n')
         # Upload the Readme file / Model Card to the Hugging Face Hub
         api.upload_file(
