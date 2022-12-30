@@ -17,8 +17,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
-from cleanrl.argument_utils import get_datatype
-
 from torch.ao.quantization.fake_quantize import default_fused_wt_fake_quant , default_weight_fake_quant
 
 from template import select_optmizer
@@ -219,7 +217,13 @@ def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
 if __name__ == "__main__":
     args = parse_args()
     
-    args = get_datatype(args)
+    if args.quantize_activation_quantize_dtype is not None:
+        if args.quantize_activation_quantize_dtype == "quint8":
+            args.quantize_activation_quantize_dtype = torch.quint8
+        elif args.quantize_activation_quantize_dtype == "qint8":
+            args.quantize_activation_quantize_dtype = torch.qint8
+        else:
+            raise ValueError(f"{args.quantize_activation_quantize_dtype} is not supported for quantization")
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
