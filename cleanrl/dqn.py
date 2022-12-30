@@ -19,7 +19,6 @@ from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 from torch.ao.quantization.fake_quantize import default_fused_wt_fake_quant , default_weight_fake_quant
 
-from template import select_optmizer
 
 
 logging.basicConfig(filename="tests.log", level=logging.NOTSET,
