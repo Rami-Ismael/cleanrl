@@ -28,6 +28,7 @@ from cleanrl.algos.opt import Adan, hAdam
 from cleanrl.argument_utils import get_datatype
 from rich import print
 import sys
+from cleanrl.functional.no_sync.hugging_face import push_to_hub
 
 from template import get_quantization_config
 
@@ -495,59 +496,9 @@ def dqn_functional(
         print("Model uploaded to Hugging Face Hub")
     except Exception as e:
         print("Error in creating the repo in Hugging Face Hub", e)
+    ## called the Push to Hub
     try:
-        ## Create the model card for the DQN model applied to the multiple discrete environments
-        #1. Create a Readme file
-        with open("README.md", "w") as f:
-            ## Add the YAML Section in the ReadMe file
-            f.write(f"--- \n")
-            f.write(f"license: apache-2.0 \n")
-            f.write(f"--- \n")
-            ## Read the model description
-            f.write(f"DQN model applied to the this discrete environments {env_id} \n")
-            ## Add the model Description
-            f.write(f"## Model Description \n")
-            f.write(f"The model was trained from the CleanRl library using the DQN algorithm on {env_id}\n")
-            ## Add Intended Use & Limitation
-            f.write(f"## Intended Use & Limitation \n")
-            f.write(f"The model is intended to be used for the following environments {env_id} \n and understand the implication of Quantization on this type of model from a pretrained state\n")
-            ## Add Training Procdure
-            f.write(f"## Training Procdure \n")
-            f.write(f"### Training Hyperparameters \n")
-            f.write("The folloing hyperparameters were used during training: \n")
-            for key, value in vars(args).items():
-                if "quantize" not in key:
-                    f.write(f"- {key}: {value} \n")
-            ## Framework and version
-            f.write(f"### Framework and version \n")
-            f.write(f"Pytorch {torch.__version__} \n\n")
-            f.write(f"gym {gym.__version__} \n")
-            f.write(f"Weights and Biases {wandb.__version__} \n")
-            f.write(f"Hugging Face Hub {huggingface_hub.__version__} \n")
-            f.write(f"Python Version {sys.version} \n")
-            ## Citation Section
-            f.write(f"## Citation \n")
-            f.write(f"```bibtex \n")
-            ### CleanRL citation 
-            ### Optimizer Citation
-            ### Weight and Bias Citation
-            ### PyTorch Citation
-            ### Human-level control through deep reinforcement learningDQN citation
-            f.write("@article{mnih2013playing, \n")
-            f.write("title={Playing atari with deep reinforcement learning}, \n")
-            f.write(f'``` \n')
-        # Upload the Readme file / Model Card to the Hugging Face Hub
-        api.upload_file(
-            path_in_repo="README.md",
-            path_or_fileobj="README.md",
-            repo_id="Rami/"+run_name,
-            repo_type="model",
-            token=HF_KEY,
-        )
-        print("Model Card uploaded to Hugging Face Hub")
-    except Exception as e:
-        print(e)
-    ## Upload the Tensorboard logs to the Hugging Face Hub
+        
     try:
         api.upload_folder(
             folder_path="runs/"+run_name,
@@ -571,4 +522,17 @@ def dqn_functional(
         print("Videos uploaded to Hugging Face Hub")
     except Exception as e:
         print(e)
+    ## Upload the funtional dqn from the no_sync folder in the Hugging Face Hub
+    try:
+        api.upload_folder(
+            folder_path="cleanrl/functionals/no_sync/functional_dqn.py",
+            path_in_repo="dqn.py",
+            repo_id="Rami/"+run_name,
+            repo_type="model",
+            token=HF_KEY,
+        )
+        print("no_sync uploaded to Hugging Face Hub")
+    except Exception as e:
+        print(e)
+    ## Return the compute resource to train the mode
     return run ,  np.average(max_episode_return)
