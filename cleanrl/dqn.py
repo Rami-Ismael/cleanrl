@@ -7,7 +7,7 @@ import time
 from distutils.util import strtobool
 import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-from cleanrl_utils import quantization
+from quantize_methods import get_eager_quantization
 
 
 import gym
@@ -92,14 +92,15 @@ def parse_args():
     parser.add_argument("--quantize-weight-quantize-max", type=int, default= 255)
     parser.add_argument("--quantize-weight-dtype", type=str, default="quint8")
     parser.add_argument("--quantize-weight-qschme", type=str, default="per_tensor_symmetric")
-    parser.add_argument("--quantize-weight-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-weight-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     ## Quantize Activation
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
     parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
     parser.add_argument("--quantize-activation-quantize-max", type=int, default= 255)
-    parser.add_argument("--quantize-activation-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-activation-qschme", type=str, default="per_tensor_symmetric")
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
+    parser.add_argument("--quantize-activation-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     ## Other papers algorithm and ideas
     parser.add_argument("--optimizer" , type=str, default="Adam")
     args = parser.parse_args()
@@ -124,28 +125,9 @@ def make_env(env_id, seed, idx, capture_video, run_name):
 
 # ALGO LOGIC: initialize agent here:
 class QNetwork(nn.Module):
-    def __init__(self, env , 
-                 quantize_weight:bool = False,
-                 quantize_weight_bitwidth:int = 8,
-                 quantize_activation:bool = False,
-                 quantize_activation_bitwidth:int = 8,
-                 quantize_activation_quantize_min:int = 0,
-                 quantize_activation_quantize_max:int = 255,
-                 quanitize_activation_quantize_reduce_range:bool = False,
-                 quantize_activation_quantize_dtype:torch.dtype = torch.quint8 , 
+    def __init__(self, 
+                 env , 
                  ):
-        ## Save the Param
-        ## Quantize Param
-        ### Quantuze Param Weight
-        self.quantize_weight = quantize_weight
-        self.quantize_weight_bitwidth = quantize_weight_bitwidth
-        ### Quantize Param Activation
-        self.quantize_activation = quantize_activation
-        self.quantize_activation_bitwidth = quantize_activation_bitwidth
-        self.quantize_activation_quantize_min = quantize_activation_quantize_min
-        self.quantize_activation_quantize_max = quantize_activation_quantize_max
-        self.quanitize_activation_quantize_reduce_range = quanitize_activation_quantize_reduce_range
-        self.quantize_activation_quantize_dtype = quantize_activation_quantize_dtype
         super().__init__()
         self.network = nn.Sequential(
             nn.Linear(np.array(env.single_observation_space.shape).prod(), 120),
@@ -156,37 +138,15 @@ class QNetwork(nn.Module):
         )
         logging.info(f"The model is {self.network} GB")  
         logging.info(f"The size of the model is {size_of_model(self.network)}")
-        
-        if self.quantize_activation or self.quantize_weight:
-            self.network = nn.Sequential(
-                torch.ao.quantization.QuantStub(),
-                nn.Linear(np.array(env.single_observation_space.shape).prod(), 120),
-                nn.ReLU(),
-                nn.Linear(120, 84),
-                nn.ReLU(),
-                nn.Linear(84, env.single_action_space.n),
-                torch.ao.quantization.DeQuantStub(),
-            )
-            ## Fuse your model
-            self.fuse_model()
-            logging.info("Fused model")
-            logging.info(self.network)
-            ## set the qconfig for the model
-            self.network.qconfig = self.get_quantization_config()
-            logging.info(f"Set qconfig { self.network.qconfig} for the model")
-            ## Prepare the model for quantize aware trianing
-            torch.ao.quantization.prepare_qat(self.network, inplace=True)
-            logging.info("Prepared model for quantization aware training")
-            logging.info(self.network)
-
     def forward(self, x):
         return self.network(x)
     ## Fuse the model
     def fuse_model(self):
         layers = list()
-        for index in range( 1, len(self.network) - 2 , 2):
+        for index in range( 0, len(self.network) - 3 , 2):
             layers.append([str(index) , str(index + 1)])
         logging.info(f"Layers to fuse {layers}")
+        print(f"Layers to fuse {layers}")
         torch.ao.quantization.fuse_modules(self.network, layers, inplace=True)
     def get_quantization_config(self):
         if self.quantize_weight:
@@ -274,21 +234,17 @@ if __name__ == "__main__":
 
     q_network = QNetwork(
                         env = envs,
-                        quantize_weight = args.quantize_weight,
-                        quantize_weight_bitwidth = args.quantize_weight_bitwidth,
-                        quantize_activation = args.quantize_activation,
-                        quantize_activation_bitwidth =  args.quantize_activation_bitwidth,
                          )
     logging.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
     if args.quantize_weight or args.quantize_activation:
         q_network.fuse_model()
         
-        q_network.qconfig = quantization.get_eager_quantization(
+        q_network.qconfig = get_eager_quantization(
             weight_quantize = args.quantize_weight,
             weight_observer_type = "moving_average_min_max",
-            weight_quantization_min =  args.quantize_weight_quantization_min,
-            weight_quantization_max = args.quantize_weight_quantization_max,
-            weight_quantization_dtype = args.quantize_weight_quantization_dtype,
+            weight_quantization_min =  args.quantize_weight_quantize_min , 
+            weight_quantization_max = args.quantize_weight_quantize_max,
+            weight_quantization_dtype = args.quantize_weight_dtype,
             weight_reduce_range= args.quantize_weight_reduce_range,
             activation_quantize= args.quantize_activation,
             activation_quantization_min = args.quantize_activation_quantization_min,
@@ -305,7 +261,7 @@ if __name__ == "__main__":
     if args.quantize_weight or args.quantize_activation:
         q_network.fuse_model()
         
-        q_network.qconfig = quantization.get_eager_quantization(
+        q_network.qconfig = get_eager_quantization(
             weight_quantize = args.quantize_weight,
             weight_observer_type = "moving_average_min_max",
             weight_quantization_min =  args.quantize_weight_quantization_min,
