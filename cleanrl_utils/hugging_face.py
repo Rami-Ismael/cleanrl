@@ -9,6 +9,25 @@ import numpy as np
 HUGGINGFACE_VIDEO_PREVIEW_FILE_NAME = "replay.mp4"
 HUGGINGFACE_README_FILE_NAME = "README.md"
 
+def add_intended_use_limitations_to_readme(readme_path: Path):
+    with open(readme_path, "a", encoding="utf-8") as f:
+        f.write(
+            """
+            # Intended Use & Limitations
+            This model is intended to be a full trained model for scratch the model. And later to be used to fine tune the model in the same env with PTQ and QAT Libiraries tell them this is an INT model
+        """
+        )
+        
+def add_inference_to_readme(readme_path: Path):
+    with open( readme_path , "a", encoding="utf-8") as f:
+        f.write(
+            """
+            # Inference
+            This model take 
+            """
+        )
+    
+
 
 def push_to_hub(
     args: argparse.Namespace,
@@ -89,10 +108,10 @@ Please refer to the [documentation](https://docs.cleanrl.dev/get-started/zoo/) f
     with open(readme_path, "w", encoding="utf-8") as f:
         f.write(readme)
     metadata_save(readme_path, metadata)
-    ## Add the Intended Use of the model 
-    ### if model is for traed do I can be use for pretraining a RL agent with QAT and upload the int8 model somehwere in the HG Hub
-    ### If the model was trained for scratch with QAT Libiraries tell them this is an INT model
-    ## Add the inferecen of the model in the ReadMe
+    ## Add the Intended Use & limiations section in the ReadMe
+    add_intended_use_limitations_to_readme(readme_path)
+    ## Add the the section in the ReadMe called the inference
+    
     ## Add the size of the model in the ReadMe
     ##Upload the mp4 file
     ##Upload the model 

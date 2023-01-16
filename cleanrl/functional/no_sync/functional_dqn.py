@@ -28,7 +28,7 @@ from cleanrl.algos.opt import Adan, hAdam
 from cleanrl.argument_utils import get_datatype
 from rich import print
 import sys
-from cleanrl.functional.no_sync.hugging_face import push_to_hub
+from cleanrl_utils.hugging_face import push_to_hub
 
 from template import get_quantization_config
 
@@ -498,7 +498,19 @@ def dqn_functional(
         print("Error in creating the repo in Hugging Face Hub", e)
     ## called the Push to Hub
     try:
-        
+        push_to_hub(
+            args = args,
+            episodic_returns = [] , 
+            repo_id = "Rami/"+run_name,
+            algo_name="DQN",
+            folder_path = "models"
+            video_folder_path="videos",
+            revision = "main",
+            create_pr = False , 
+            private = False
+        )
+    except Exception as e:
+        print("I Tried to called the Github Copilot to works")
     try:
         api.upload_folder(
             folder_path="runs/"+run_name,

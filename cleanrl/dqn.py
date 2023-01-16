@@ -6,6 +6,8 @@ import random
 import time
 from distutils.util import strtobool
 import logging
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from cleanrl_utils import quantization
 
 
 import gym
@@ -86,6 +88,11 @@ def parse_args():
     ## Quantize Weight
     parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)
+    parser.add_argument("--quantize-weight-quantize-min", type=int, default= 0)
+    parser.add_argument("--quantize-weight-quantize-max", type=int, default= 255)
+    parser.add_argument("--quantize-weight-dtype", type=str, default="quint8")
+    parser.add_argument("--quantize-weight-qschme", type=str, default="per_tensor_symmetric")
+    parser.add_argument("--quantize-weight-quantize-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     ## Quantize Activation
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
@@ -271,16 +278,48 @@ if __name__ == "__main__":
                         quantize_weight_bitwidth = args.quantize_weight_bitwidth,
                         quantize_activation = args.quantize_activation,
                         quantize_activation_bitwidth =  args.quantize_activation_bitwidth,
-                         ).to(device)
+                         )
     logging.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
+    if args.quantize_weight or args.quantize_activation:
+        q_network.fuse_model()
+        
+        q_network.qconfig = quantization.get_eager_quantization(
+            weight_quantize = args.quantize_weight,
+            weight_observer_type = "moving_average_min_max",
+            weight_quantization_min =  args.quantize_weight_quantization_min,
+            weight_quantization_max = args.quantize_weight_quantization_max,
+            weight_quantization_dtype = args.quantize_weight_quantization_dtype,
+            weight_reduce_range= args.quantize_weight_reduce_range,
+            activation_quantize= args.quantize_activation,
+            activation_quantization_min = args.quantize_activation_quantization_min,
+            activation_quantization_max = args.quantize_activation_quantization_max,
+            activation_quantization_dtype = args.quantize_activation_quantization_dtype,
+            activation_quantization_qscheme = args.quantize_activation_quantization_qscheme,
+        )
+        ## inplace will modify the model in place memory. There is no need to create a new model
+        torch.ao.quantization.prepare(q_network, inplace=True)
     optimizer = optimizer_of_choice(q_network.parameters(), lr=args.learning_rate)
     target_network =    QNetwork(
                         env = envs,
-                        quantize_weight = args.quantize_weight,
-                        quantize_weight_bitwidth = args.quantize_weight_bitwidth,
-                        quantize_activation = args.quantize_activation,
-                        quantize_activation_bitwidth =  args.quantize_activation_bitwidth,
                          ).to(device)
+    if args.quantize_weight or args.quantize_activation:
+        q_network.fuse_model()
+        
+        q_network.qconfig = quantization.get_eager_quantization(
+            weight_quantize = args.quantize_weight,
+            weight_observer_type = "moving_average_min_max",
+            weight_quantization_min =  args.quantize_weight_quantization_min,
+            weight_quantization_max = args.quantize_weight_quantization_max,
+            weight_quantization_dtype = args.quantize_weight_quantization_dtype,
+            weight_reduce_range= args.quantize_weight_reduce_range,
+            activation_quantize= args.quantize_activation,
+            activation_quantization_min = args.quantize_activation_quantization_min,
+            activation_quantization_max = args.quantize_activation_quantization_max,
+            activation_quantization_dtype = args.quantize_activation_quantization_dtype,
+            activation_quantization_qscheme = args.quantize_activation_quantization_qscheme,
+        )
+        ## inplace will modify the model in place memory. There is no need to create a new model
+        torch.ao.quantization.prepare(q_network, inplace=True)       
     target_network.load_state_dict(q_network.state_dict())
     logging.info(f"TargetNetwork: {target_network} and the model is on the device: {next(target_network.parameters()).device}")
 
