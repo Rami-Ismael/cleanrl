@@ -326,10 +326,10 @@ if __name__ == "__main__":
     target_network.load_state_dict(q_network.state_dict())
     logging.info(f"TargetNetwork: {target_network} and the model is on the device: {next(target_network.parameters()).device}")
     ## Before the training start. I want to set the fake_quant and oberr to be enable. When iniltization scale in Fake Quantize are inf and -inf
-    q_network.enable_fake_quant()
-    q_network.enable_observer()
-    target_network.enable_fake_quant()
-    target_network.enable_observer()
+    q_network.apply( torch.ao.quantization.enable_observer )
+    q_network.apply( torch.ao.quantization.enable_fake_quant )
+    target_network.apply( torch.ao.quantization.enable_observer )
+    target_network.apply( torch.ao.quantization.enable_fake_quant )
     rb = ReplayBuffer(
         args.buffer_size,
         envs.single_observation_space,
