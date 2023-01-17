@@ -98,7 +98,7 @@ def parse_args():
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
     parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
     parser.add_argument("--quantize-activation-quantize-max", type=int, default= 255)
-    parser.add_argument("--quantize-activation-qschme", type=str, default="per_tensor_symmetric")
+    parser.add_argument("--quantize-activation-qscheme", type=str, default="per_tensor_symmetric")
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
     parser.add_argument("--quantize-activation-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     ## Other papers algorithm and ideas
@@ -126,7 +126,7 @@ def make_env(env_id, seed, idx, capture_video, run_name):
 # ALGO LOGIC: initialize agent here:
 class QNetwork(nn.Module):
     def __init__(self, 
-                 env , 
+                 env ,
                  ):
         super().__init__()
         self.network = nn.Sequential(
@@ -136,14 +136,16 @@ class QNetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(84, env.single_action_space.n),
         )
+        self.quantize_modules = torch.ao.quantization.QuantStub()
+        self.dequantize_modules = torch.ao.quantization.DeQuantStub()
         logging.info(f"The model is {self.network} GB")  
         logging.info(f"The size of the model is {size_of_model(self.network)}")
-    def forward(self, x):
-        return self.network(x)
+    def forward(self, x , quantize = False):
+        return  self.quantize_modules(self.network(self.quantize_modules(x))) if quantize else self.network(x)
     ## Fuse the model
     def fuse_model(self):
         layers = list()
-        for index in range( 0, len(self.network) - 3 , 2):
+        for index in range( 0, len(self.network) - 2 , 2):
             layers.append([str(index) , str(index + 1)])
         logging.info(f"Layers to fuse {layers}")
         print(f"Layers to fuse {layers}")
@@ -190,6 +192,13 @@ if __name__ == "__main__":
             args.quantize_activation_quantize_dtype = torch.qint8
         else:
             raise ValueError(f"{args.quantize_activation_quantize_dtype} is not supported for quantization")
+    if args.quantize_weight_dtype is not None:
+        if args.quantize_weight_dtype == "quint8":
+            args.quantize_weight_dtype = torch.quint8
+        elif args.quantize_weight_dtype == "qint8":
+            args.quantize_weight_dtype = torch.qint8
+        else:
+            raise ValueError(f"{args.quantize_weight_dtype} is not supported for quantization")
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
@@ -237,8 +246,18 @@ if __name__ == "__main__":
                          )
     logging.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
     if args.quantize_weight or args.quantize_activation:
+        ### Eager Mode Quantization
+        '''
+        1. Fuse the model
+        2. The Quantization Configuration for QAT
+        3 . Call the Prepare function
+        '''
+        ## Fuse the layer you must do this before you call the prepare function and set the model to eval mode
+        q_network.eval()
         q_network.fuse_model()
-        
+        ## Set the model to train mode to set the qat configuration of the model 
+        q_network.train()
+        print(args.quantize_weight_dtype)
         q_network.qconfig = get_eager_quantization(
             weight_quantize = args.quantize_weight,
             weight_observer_type = "moving_average_min_max",
@@ -247,18 +266,23 @@ if __name__ == "__main__":
             weight_quantization_dtype = args.quantize_weight_dtype,
             weight_reduce_range= args.quantize_weight_reduce_range,
             activation_quantize= args.quantize_activation,
-            activation_quantization_min = args.quantize_activation_quantization_min,
-            activation_quantization_max = args.quantize_activation_quantization_max,
-            activation_quantization_dtype = args.quantize_activation_quantization_dtype,
-            activation_quantization_qscheme = args.quantize_activation_quantization_qscheme,
+            activation_quantization_min = args.quantize_activation_quantize_min,
+            activation_quantization_max = args.quantize_activation_quantize_max,
+            activation_quantization_dtype = args.quantize_activation_quantize_dtype,
+            activation_quantization_qscheme = args.quantize_activation_qscheme,
+            activation_reduce_range = args.quantize_activation_reduce_range,
         )
-        ## inplace will modify the model in place memory. There is no need to create a new model
-        torch.ao.quantization.prepare(q_network, inplace=True)
+        from rich import print
+        print(q_network.qconfig)
+        print(q_network.qconfig.weight)
+        ## inplace will modify the model in place memory. There is no need to create a new model and qat module will be added
+        torch.ao.quantization.prepare_qat(q_network, inplace=True)
     optimizer = optimizer_of_choice(q_network.parameters(), lr=args.learning_rate)
     target_network =    QNetwork(
                         env = envs,
                          ).to(device)
     if args.quantize_weight or args.quantize_activation:
+        
         q_network.fuse_model()
         
         q_network.qconfig = get_eager_quantization(
@@ -352,6 +376,11 @@ if __name__ == "__main__":
         torch.ao.quantization.convert(q_network, inplace=True)
         logging.info(f"Model converted to 8 bit and the size of the model is {size_of_model(q_network)}")
         logging.info(f"The q network is {q_network}")
+        '''
+        push_to_hub(
+            args 
+        )
+        '''
     except Exception as e:
         logging.info(f"Conversion to 8 bit did not happen\n: {e}")
     envs.close()
