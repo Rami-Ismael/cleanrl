@@ -24,11 +24,12 @@ def get_eager_quantization(
     activation_observer_type:str = "moving_average_minmax",
     activation_quantization_min:int = -128,
     activation_quantization_max:int = 127,
-    activation_quantization_dtype:torch.dtype = None,
+    activation_quantization_dtype:torch.dtype = torch.quint8,
     activation_quantization_qscheme:torch.qscheme = torch.per_tensor_symmetric,
     *args, **kwargs
 ):
     assert isinstance( weight_quantization_dtype , torch.dtype)
+    assert isinstance( activation_quantization_dtype , torch.dtype)
     ## all quantization  in eager mode are unifrom quantization 
     weight_quantization_fake_quantize = None
     if weight_quantize:
@@ -41,18 +42,16 @@ def get_eager_quantization(
                         quant_max = weight_quantization_max,
                     ))
     activation_quantization_fake_quantize = None
-    '''
     if activation_quantize:
             activation_quantization_fake_quantize = FakeQuantize.with_args(
-                observer =   get_quantization_obverver( activation_observer_type) ,
-                                                quant_min = activation_quantization_min,
-                                                quant_max = activation_quantization_max,
-                                                dtype = activation_quantization_dtype,
-                                                qscheme = activation_quantization_qscheme,
-                                                reduce_range = False
-                                                )
-    '''
+                    observer =   MinMaxObserver.with_args( 
+                        quant_min = activation_quantization_min,
+                        quant_max = activation_quantization_max,
+                        dtype = activation_quantization_dtype,
+                        qscheme = activation_quantization_qscheme,
+                        reduce_range = False
+                    ))
     return QConfig(
         weight = weight_quantization_fake_quantize,
-        activation = weight_quantization_fake_quantize
+        activation = activation_quantization_fake_quantize
     )
