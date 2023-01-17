@@ -184,7 +184,7 @@ def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
 
 if __name__ == "__main__":
     args = parse_args()
-    
+    ## Set the Quantzation Dtypes to the a Torch Dtypes 
     if args.quantize_activation_quantize_dtype is not None:
         if args.quantize_activation_quantize_dtype == "quint8":
             args.quantize_activation_quantize_dtype = torch.quint8
@@ -199,6 +199,21 @@ if __name__ == "__main__":
             args.quantize_weight_dtype = torch.qint8
         else:
             raise ValueError(f"{args.quantize_weight_dtype} is not supported for quantization")
+    ## Set the Quantization Scheme to the Torch Quantization Scheme instead of a string which is the default
+    if args.quantize_activation_qscheme is not None and isinstance( args.quantize_activation_qscheme , str):
+        if args.quantize_activation_qscheme == "per_tensor_symmetric":
+            args.quantize_activation_qscheme = torch.per_tensor_symmetric
+        elif args.quantize_activation_qscheme == "per_tensor_affine":
+            args.quantize_activation_qscheme = torch.per_tensor_affine
+        else:
+            raise ValueError(f"{args.quantize_activation_qscheme} is not supported for quantization")
+    if args.quantize_weight_qscheme is not None and isinstance(args.quantize_weight_qscheme, str):
+        if args.quantize_weight_qscheme == "per_tensor_symmetric":
+            args.quantize_weight_qscheme = torch.per_tensor_symmetric
+        elif args.quantize_weight_qscheme == "per_tensor_affine":
+            args.quantize_weight_qscheme = torch.per_tensor_affine
+        else:
+            raise ValueError(f"{args.quantize_weight_qscheme} is not supported for quantization")
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb

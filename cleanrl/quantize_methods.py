@@ -30,6 +30,8 @@ def get_eager_quantization(
 ):
     assert isinstance( weight_quantization_dtype , torch.dtype)
     assert isinstance( activation_quantization_dtype , torch.dtype)
+    assert isinstance( weight_quantization_qscheme , torch.qscheme)
+    assert isinstance( activation_quantization_qscheme , torch.qscheme)
     ## all quantization  in eager mode are unifrom quantization 
     weight_quantization_fake_quantize = None
     if weight_quantize:
