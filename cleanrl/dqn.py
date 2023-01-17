@@ -91,7 +91,7 @@ def parse_args():
     parser.add_argument("--quantize-weight-quantize-min", type=int, default= 0)
     parser.add_argument("--quantize-weight-quantize-max", type=int, default= 255)
     parser.add_argument("--quantize-weight-dtype", type=str, default="quint8")
-    parser.add_argument("--quantize-weight-qschme", type=str, default="per_tensor_symmetric")
+    parser.add_argument("--quantize-weight-qscheme", type=str, default="per_tensor_symmetric")
     parser.add_argument("--quantize-weight-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     ## Quantize Activation
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
@@ -272,7 +272,7 @@ if __name__ == "__main__":
         q_network.fuse_model()
         ## Set the model to train mode to set the qat configuration of the model 
         q_network.train()
-        print(args.quantize_weight_dtype)
+        print(args.quantize_activation)
         q_network.qconfig = get_eager_quantization(
             weight_quantize = args.quantize_weight,
             weight_observer_type = "moving_average_min_max",
@@ -287,9 +287,6 @@ if __name__ == "__main__":
             activation_quantization_qscheme = args.quantize_activation_qscheme,
             activation_reduce_range = args.quantize_activation_reduce_range,
         )
-        from rich import print
-        print(q_network.qconfig)
-        print(q_network.qconfig.weight)
         ## inplace will modify the model in place memory. There is no need to create a new model and qat module will be added
         torch.ao.quantization.prepare_qat(q_network, inplace=True)
     optimizer = optimizer_of_choice(q_network.parameters(), lr=args.learning_rate)
@@ -317,7 +314,11 @@ if __name__ == "__main__":
         torch.ao.quantization.prepare(q_network, inplace=True)       
     target_network.load_state_dict(q_network.state_dict())
     logging.info(f"TargetNetwork: {target_network} and the model is on the device: {next(target_network.parameters()).device}")
-
+    ## Before the training start. I want to set the fake_quant and oberr to be enable. When iniltization scale in Fake Quantize are inf and -inf
+    q_network.enable_fake_quant()
+    q_network.enable_observer()
+    target_network.enable_fake_quant()
+    target_network.enable_observer()
     rb = ReplayBuffer(
         args.buffer_size,
         envs.single_observation_space,

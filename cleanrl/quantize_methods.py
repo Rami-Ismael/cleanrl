@@ -26,14 +26,14 @@ def get_eager_quantization(
     activation_quantization_max:int = 127,
     activation_quantization_dtype:torch.dtype = torch.quint8,
     activation_quantization_qscheme:torch.qscheme = torch.per_tensor_symmetric,
-    *args, **kwargs
-):
+    activation_reduce_range:bool = False
+) -> QConfig:
     assert isinstance( weight_quantization_dtype , torch.dtype)
     assert isinstance( activation_quantization_dtype , torch.dtype)
     assert isinstance( weight_quantization_qscheme , torch.qscheme)
     assert isinstance( activation_quantization_qscheme , torch.qscheme)
     ## all quantization  in eager mode are unifrom quantization 
-    weight_quantization_fake_quantize = None
+    weight_quantization_fake_quantize = torch.nn.Identity
     if weight_quantize:
         weight_quantization_fake_quantize = FakeQuantize.with_args(
                     observer =  MinMaxObserver.with_args(
@@ -43,7 +43,7 @@ def get_eager_quantization(
                         quant_min= weight_quantization_min,
                         quant_max = weight_quantization_max,
                     ))
-    activation_quantization_fake_quantize = None
+    activation_quantization_fake_quantize = torch.nn.Identity
     if activation_quantize:
             activation_quantization_fake_quantize = FakeQuantize.with_args(
                     observer =   MinMaxObserver.with_args( 
@@ -53,7 +53,9 @@ def get_eager_quantization(
                         qscheme = activation_quantization_qscheme,
                         reduce_range = False
                     ))
-    return QConfig(
+    quantization_config = QConfig(
         weight = weight_quantization_fake_quantize,
         activation = activation_quantization_fake_quantize
     )
+    return quantization_config
+    
