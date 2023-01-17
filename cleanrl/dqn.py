@@ -57,7 +57,13 @@ def parse_args():
         help="the entity (team) of wandb's project")
     parser.add_argument("--capture-video", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="weather to capture videos of the agent performances (check out `videos` folder)")
-
+    parser.add_argument("--save-model", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
+        help="whether to save model into the `runs/{run_name}` folder")
+    parser.add_argument("--upload-model", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
+        help="whether to upload the saved model to huggingface")
+    parser.add_argument("--hf-entity", type=str, default="",
+        help="the user or org name of the model repository from the Hugging Face Hub")
+    
     # Algorithm specific arguments
     parser.add_argument("--env-id", type=str, default="CartPole-v1",
         help="the id of the environment")
@@ -399,16 +405,30 @@ if __name__ == "__main__":
     ## Convert the model to 8 bit
     q_network.to("cpu")
     q_network.eval()
-    try:
-        torch.ao.quantization.convert(q_network, inplace=True)
-        logging.info(f"Model converted to 8 bit and the size of the model is {size_of_model(q_network)}")
-        logging.info(f"The q network is {q_network}")
-        '''
-        push_to_hub(
-            args 
-        )
-        '''
-    except Exception as e:
-        logging.info(f"Conversion to 8 bit did not happen\n: {e}")
+    if args.save_model:
+        try:
+            torch.ao.quantization.convert(q_network, inplace=True)
+            logging.info(f"Model converted to 8 bit and the size of the model is {size_of_model(q_network)}")
+            logging.info(f"The q network is {q_network}")
+            model_path = os.path.join(args.save_path, "q_network.pt")
+            torch.save(q_network.state_dict(), model_path)
+            from cleanrl_utils.evals.dqn_eval import evaluate
+            
+            episodic_return = evaluate(
+                model_path,
+                make_env,
+                args.env_id , 
+                eval_episodes=10,
+                run_name=f"{run_name}-eval",
+                Model=QNetwork,
+                device= device , 
+                epsilon = 0.05,
+            )
+            
+            for idx, episodic_return in enumerate(episodic_return):
+                writer.add_scalar("charts/eval_episodic_return", episodic_return, idx)
+                
+        except Exception as e:
+            logging.info(f"Conversion to 8 bit did not happen\n: {e}")
     envs.close()
     writer.close()
