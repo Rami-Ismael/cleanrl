@@ -94,7 +94,7 @@ def parse_args():
     parser.add_argument("--quantize-weight-qscheme", type=str, default="per_tensor_symmetric")
     parser.add_argument("--quantize-weight-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     ## Quantize Activation
-    parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
     parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
     parser.add_argument("--quantize-activation-quantize-max", type=int, default= 255)
@@ -295,23 +295,34 @@ if __name__ == "__main__":
                          ).to(device)
     if args.quantize_weight or args.quantize_activation:
         
-        q_network.fuse_model()
-        
-        q_network.qconfig = get_eager_quantization(
+        ### Eager Mode Quantization
+        '''
+        1. Fuse the model
+        2. The Quantization Configuration for QAT
+        3 . Call the Prepare function
+        '''
+        ## Fuse the layer you must do this before you call the prepare function and set the model to eval mode
+        target_network.eval()
+        target_network.fuse_model()
+        ## Set the model to train mode to set the qat configuration of the model 
+        target_network.train()
+        print(args.quantize_activation)
+        target_network.qconfig = get_eager_quantization(
             weight_quantize = args.quantize_weight,
             weight_observer_type = "moving_average_min_max",
-            weight_quantization_min =  args.quantize_weight_quantization_min,
-            weight_quantization_max = args.quantize_weight_quantization_max,
-            weight_quantization_dtype = args.quantize_weight_quantization_dtype,
+            weight_quantization_min =  args.quantize_weight_quantize_min , 
+            weight_quantization_max = args.quantize_weight_quantize_max,
+            weight_quantization_dtype = args.quantize_weight_dtype,
             weight_reduce_range= args.quantize_weight_reduce_range,
             activation_quantize= args.quantize_activation,
-            activation_quantization_min = args.quantize_activation_quantization_min,
-            activation_quantization_max = args.quantize_activation_quantization_max,
-            activation_quantization_dtype = args.quantize_activation_quantization_dtype,
-            activation_quantization_qscheme = args.quantize_activation_quantization_qscheme,
+            activation_quantization_min = args.quantize_activation_quantize_min,
+            activation_quantization_max = args.quantize_activation_quantize_max,
+            activation_quantization_dtype = args.quantize_activation_quantize_dtype,
+            activation_quantization_qscheme = args.quantize_activation_qscheme,
+            activation_reduce_range = args.quantize_activation_reduce_range,
         )
-        ## inplace will modify the model in place memory. There is no need to create a new model
-        torch.ao.quantization.prepare(q_network, inplace=True)       
+        ## inplace will modify the model in place memory. There is no need to create a new model and qat module will be added
+        torch.ao.quantization.prepare_qat(target_network, inplace=True)       
     target_network.load_state_dict(q_network.state_dict())
     logging.info(f"TargetNetwork: {target_network} and the model is on the device: {next(target_network.parameters()).device}")
     ## Before the training start. I want to set the fake_quant and oberr to be enable. When iniltization scale in Fake Quantize are inf and -inf
