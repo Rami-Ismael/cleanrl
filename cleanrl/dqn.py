@@ -20,8 +20,7 @@ import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 from torch.ao.quantization.fake_quantize import  default_weight_fake_quant
-## Set up Warning 
-# Set up warnings
+## Set up Warning # Set up warnings
 import warnings
 warnings.filterwarnings(
     action='ignore',
@@ -371,7 +370,7 @@ if __name__ == "__main__":
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                 writer.add_scalar("charts/epsilon", epsilon, global_step)
                 ## write directly to weight and  bias. Because for some wierd reason sync tensorboard does not work yet  this is work around right now
-                if on_colab():
+                if on_colab() or ( args.track and True):
                     run.log(data = {"charts/episodic_return": info["episode"]["r"]}  , step = global_step)
                     run.log({"charts/episodic_length": info["episode"]["l"]  }, step = global_step)
                     run.log({"charts/epsilon": epsilon  }, step = global_step)
@@ -399,7 +398,7 @@ if __name__ == "__main__":
             if global_step % 100 == 0:
                 writer.add_scalar("losses/td_loss", loss, global_step)
                 writer.add_scalar("losses/q_values", old_val.mean().item(), global_step)
-                if on_colab():
+                if on_colab() or ( args.track and True):
                     run.log({"losses/td_loss": loss  }, step = global_step)
                     run.log({"losses/q_values": old_val.mean().item()  }, step = global_step)
                 print("SPS:", int(global_step / (time.time() - start_time)))
@@ -443,7 +442,7 @@ if __name__ == "__main__":
                 )
                 for idx, episodic_return in enumerate(episodic_returns):
                     writer.add_scalar("charts/eval_episodic_return", episodic_return, idx)
-                if on_colab():
+                if on_colab() or ( args.track and True):
                     run.log({"charts/eval_episodic_return": episodic_return  }, step = idx)
                 if args.upload_model:
                     from cleanrl_utils.huggingface import push_to_hub

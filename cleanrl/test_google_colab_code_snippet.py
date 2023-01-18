@@ -1,4 +1,5 @@
 import logging
+from rich import print
 ## A method to check if my code is runnning on google colab
 logging.basicConfig(filename="tests.log", level=logging.NOTSET,
                     filemode='w',
