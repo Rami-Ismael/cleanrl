@@ -9,5 +9,7 @@ def on_colab() -> bool:
         return True
     else:
         return False
+print(sys.modules)
+logging.info(sys.modules)
 print( "This code is running on google colab" if on_colab() else "This code is not running on google colab")
 logging.info("This code is running on google colab" if on_colab() else "This code is not running on google colab")
