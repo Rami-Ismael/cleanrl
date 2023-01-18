@@ -189,6 +189,7 @@ def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
 
 
 if __name__ == "__main__":
+    print("Starting the training a DQN agent")
     args = parse_args()
     ## Set the Quantzation Dtypes to the a Torch Dtypes 
     if args.quantize_activation_quantize_dtype is not None:
@@ -426,7 +427,7 @@ if __name__ == "__main__":
                     device= device , 
                     epsilon = 0.05,
                 )
-                for idx, episodic_return in enumerate(episodic_return):
+                for idx, episodic_return in enumerate(episodic_returns):
                     writer.add_scalar("charts/eval_episodic_return", episodic_return, idx)
                 if args.upload_model:
                     from cleanrl_utils.huggingface import push_to_hub
