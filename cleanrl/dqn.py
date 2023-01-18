@@ -19,7 +19,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
-from torch.ao.quantization.fake_quantize import default_fused_wt_fake_quant , default_weight_fake_quant
+from torch.ao.quantization.fake_quantize import  default_weight_fake_quant
+
+
 
 
 
@@ -112,7 +114,13 @@ def parse_args():
     args = parser.parse_args()
     # fmt: on
     return args
-
+## A method to check if my code is runnning on google colab
+import sys
+def on_colab() -> bool:
+    if 'google.colab' in sys.modules:
+        return True
+    else:
+        return False
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     def thunk():
@@ -225,10 +233,10 @@ if __name__ == "__main__":
     if args.track:
         import wandb
 
-        wandb.init(
+        run = wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
-            sync_tensorboard=True,
+            sync_tensorboard = False if on_colab else True,
             config=vars(args),
             name=run_name,
             monitor_gym=True,
@@ -367,6 +375,11 @@ if __name__ == "__main__":
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                 writer.add_scalar("charts/epsilon", epsilon, global_step)
+                ## write directly to weight and  bias. Because for some wierd reason sync tensorboard does not work yet  this is work around right now
+                if on_colab():
+                    run.log(data = {"charts/episodic_return": info["episode"]["r"]}  , step = global_step)
+                    run.log({"charts/episodic_length": info["episode"]["l"]  }, step = global_step)
+                    run.log({"charts/epsilon": epsilon  }, step = global_step)
                 break
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `terminal_observation`
@@ -391,6 +404,9 @@ if __name__ == "__main__":
             if global_step % 100 == 0:
                 writer.add_scalar("losses/td_loss", loss, global_step)
                 writer.add_scalar("losses/q_values", old_val.mean().item(), global_step)
+                if on_colab():
+                    run.log({"losses/td_loss": loss  }, step = global_step)
+                    run.log({"losses/q_values": old_val.mean().item()  }, step = global_step)
                 print("SPS:", int(global_step / (time.time() - start_time)))
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
@@ -402,7 +418,10 @@ if __name__ == "__main__":
             # update the target network
             if global_step % args.target_network_frequency == 0:
                 target_network.load_state_dict(q_network.state_dict())
-    
+    ## Stop logging of Weight and Bias
+    if args.track:
+        wandb.finish()
+        run.finish()
     ## Convert the model to 8 bit
     q_network.to("cpu")
     q_network.eval()
@@ -429,6 +448,8 @@ if __name__ == "__main__":
                 )
                 for idx, episodic_return in enumerate(episodic_returns):
                     writer.add_scalar("charts/eval_episodic_return", episodic_return, idx)
+                if on_colab():
+                    run.log({"charts/eval_episodic_return": episodic_return  }, step = idx)
                 if args.upload_model:
                     from cleanrl_utils.huggingface import push_to_hub
 
