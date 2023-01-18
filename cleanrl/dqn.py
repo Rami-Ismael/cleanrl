@@ -150,12 +150,16 @@ class QNetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(84, env.single_action_space.n),
         )
+        self.quantize = False
         self.quantize_modules = torch.ao.quantization.QuantStub()
         self.dequantize_modules = torch.ao.quantization.DeQuantStub()
         logging.info(f"The model is {self.network} GB")  
         logging.info(f"The size of the model is {size_of_model(self.network)}")
-    def forward(self, x , quantize = False):
-        return  self.quantize_modules(self.network(self.quantize_modules(x))) if quantize else self.network(x)
+    def forward(self, x ):
+        return  self.dequantize_modules(
+                        self.network(
+                            self.quantize_modules(
+                                x))) if self.quantize else self.network(x)
     ## Fuse the model
     def fuse_model(self):
         layers = list()
@@ -164,31 +168,6 @@ class QNetwork(nn.Module):
         logging.info(f"Layers to fuse {layers}")
         print(f"Layers to fuse {layers}")
         torch.ao.quantization.fuse_modules(self.network, layers, inplace=True)
-    def get_quantization_config(self):
-        if self.quantize_weight:
-            if self.quantize_activation:
-                return torch.ao.quantization.QConfig(
-                    activation = torch.ao.quantization.FakeQuantize.with_args(
-                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
-                            dtype = self.quantize_activation_quantize_dtype,
-                            reduce_range = self.quantize_activation_quantize_reduce_range,
-                            quant_min = self.quantize_activation_quantize_min,
-                            quant_max = self.quantize_activation_quantize_max,
-                        )
-                    ),
-                    weight = torch.ao.quantization.FakeQuantize.with_args(
-                        observer = torch.ao.quantization.MovingAverageMinMaxObserver(
-                            dtype = torch.quint8,
-                            quant_min = -128,
-                            quant_max = 127,
-                        )
-                    )
-                )
-            else:
-                return torch.ao.quantization.QConfig(
-                    activation = torch.nn.Identity,
-                    weight = default_weight_fake_quant,
-                )
 
 
 def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
@@ -242,6 +221,8 @@ if __name__ == "__main__":
             monitor_gym=True,
             save_code=True,
         )
+        ## log the
+        logging.info(f"Logging the model to wandb")
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
         "hyperparameters",
@@ -276,6 +257,7 @@ if __name__ == "__main__":
                          )
     logging.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
     if args.quantize_weight or args.quantize_activation:
+        q_network.quantize = True
         ### Eager Mode Quantization
         '''
         1. Fuse the model
@@ -309,6 +291,7 @@ if __name__ == "__main__":
                         env = envs,
                          ).to(device)
     if args.quantize_weight or args.quantize_activation:
+        target_network.quantize = True
         
         ### Eager Mode Quantization
         '''
