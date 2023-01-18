@@ -20,6 +20,18 @@ import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 from torch.ao.quantization.fake_quantize import  default_weight_fake_quant
+## Set up Warning 
+# Set up warnings
+import warnings
+warnings.filterwarnings(
+    action='ignore',
+    category=DeprecationWarning,
+    module=r'.*'
+)
+warnings.filterwarnings(
+    action='default',
+    module=r'torch.ao.quantization'
+)
 
 
 
