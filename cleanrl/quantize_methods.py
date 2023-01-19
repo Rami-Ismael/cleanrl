@@ -14,7 +14,7 @@ def size_of_model(model):
 
 def get_eager_quantization(
     weight_quantize:bool  = True,
-    weight_observer_type:str = "moving_average_min-max",
+    weight_observer_type:str = "moving_average_min_max",
     weight_quantization_min:int = 0,
     weight_quantization_max:int = 255,
     weight_quantization_dtype:torch.dtype = torch.quint8,
