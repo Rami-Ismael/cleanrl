@@ -106,7 +106,7 @@ def parse_args():
     # Quantization specific arguments 
     parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)
-    parser.add_argument("--quantize-weight-quantize-min", type=int, default=  ( 2 ** ( 8 ) ) // 2)
+    parser.add_argument("--quantize-weight-quantize-min", type=int, default=  -( 2 ** ( 8 ) ) // 2)
     parser.add_argument("--quantize-weight-quantize-max", type=int, default = ( 2 ** 8 ) // 2 - 1)
     parser.add_argument("--quantize-weight-dtype", type=str, default="qint8")
     parser.add_argument("--quantize-weight-qscheme", type=str, default="per_tensor_symmetric")
@@ -116,7 +116,7 @@ def parse_args():
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
     parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
     parser.add_argument("--quantize-activation-quantize-max", type=int, default= ( 2 ** 8 ) - 1)
-    parser.add_argument("--quantize-activation-qscheme", type=str, default="per_tensor_asymmetric")
+    parser.add_argument("--quantize-activation-qscheme", type=str, default="per_tensor_affine")
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
     parser.add_argument("--quantize-activation-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     ## Other papers algorithm and ideas
@@ -332,7 +332,6 @@ if __name__ == "__main__":
         ## inplace will modify the model in place memory. There is no need to create a new model and qat module will be added
         torch.ao.quantization.prepare_qat(target_network, inplace=True)       
     target_network.load_state_dict(q_network.state_dict())
-    logging.info(f"TargetNetwork: {target_network} and the model is on the device: {next(target_network.parameters()).device}")
     ## Before the training start. I want to set the fake_quant and oberr to be enable. When iniltization scale in Fake Quantize are inf and -inf
     q_network.apply( torch.ao.quantization.enable_observer )
     q_network.apply( torch.ao.quantization.enable_fake_quant )

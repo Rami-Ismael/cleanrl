@@ -15,23 +15,27 @@ def size_of_model(model):
 def get_eager_quantization(
     weight_quantize:bool  = True,
     weight_observer_type:str = "moving_average_min_max",
-    weight_quantization_min:int = 0,
-    weight_quantization_max:int = 255,
-    weight_quantization_dtype:torch.dtype = torch.quint8,
+    weight_quantization_min:int = -128,
+    weight_quantization_max:int = 127,
+    weight_quantization_dtype:torch.dtype = torch.qint8,
     weight_quantization_qscheme:torch.qscheme = torch.per_tensor_symmetric,
     weight_reduce_range = True,
     activation_quantize:bool = True,
     activation_observer_type:str = "min_max_observer",
-    activation_quantization_min:int = -128,
-    activation_quantization_max:int = 127,
+    activation_quantization_min:int = 0,
+    activation_quantization_max:int = 255,
     activation_quantization_dtype:torch.dtype = torch.quint8,
-    activation_quantization_qscheme:torch.qscheme = torch.per_tensor_symmetric,
+    activation_quantization_qscheme:torch.qscheme = torch.per_tensor_affine,
     activation_reduce_range:bool = False
 ) -> QConfig:
     assert isinstance( weight_quantization_dtype , torch.dtype)
     assert isinstance( activation_quantization_dtype , torch.dtype)
     assert isinstance( weight_quantization_qscheme , torch.qscheme)
     assert isinstance( activation_quantization_qscheme , torch.qscheme)
+    if activation_quantization_dtype == torch.quint8 and activation_quantization_min != 0:
+        raise ValueError("activation_quantization_min should be 0 for activation_quantization_dtype == torch.quint8")
+    if weight_quantization_min == 0 and weight_quantization_dtype == torch.quint8:
+        raise ValueError("weight_quantization_min should be 0 for weight_quantization_dtype == torch.quint8")
     ## all quantization  in eager mode are unifrom quantization 
     ##https://pytorch.org/blog/quantization-in-practice/
     weight_quantization_fake_quantize = torch.nn.Identity
