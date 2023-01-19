@@ -228,7 +228,7 @@ if __name__ == "__main__":
         run = wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
-            sync_tensorboard = False if on_colab else True,
+            sync_tensorboard = False  , ## IMPORTANT to set this to False otherwise wandb will override the tensorboard logs and google colab does not work 
             config=vars(args),
             name=run_name,
             monitor_gym=True,
@@ -268,7 +268,7 @@ if __name__ == "__main__":
     q_network = QNetwork(
                         env = envs,
                          )
-    logging.info(f"QNetwork: {q_network} and the model is on the device: {next(q_network.parameters()).device}")
+    logging.info(f"QNetwork: {q_network} ")
     if args.quantize_weight or args.quantize_activation:
         q_network.quantize = True
         ### Eager Mode Quantization
@@ -285,7 +285,6 @@ if __name__ == "__main__":
         print(args.quantize_activation)
         q_network.qconfig = get_eager_quantization(
             weight_quantize = args.quantize_weight,
-            weight_observer_type = "moving_average_min_max",
             weight_quantization_min =  args.quantize_weight_quantize_min , 
             weight_quantization_max = args.quantize_weight_quantize_max,
             weight_quantization_dtype = args.quantize_weight_dtype,
@@ -320,7 +319,6 @@ if __name__ == "__main__":
         print(args.quantize_activation)
         target_network.qconfig = get_eager_quantization(
             weight_quantize = args.quantize_weight,
-            weight_observer_type = "moving_average_min_max",
             weight_quantization_min =  args.quantize_weight_quantize_min , 
             weight_quantization_max = args.quantize_weight_quantize_max,
             weight_quantization_dtype = args.quantize_weight_dtype,
@@ -400,11 +398,12 @@ if __name__ == "__main__":
             if global_step % 100 == 0:
                 writer.add_scalar("losses/td_loss", loss, global_step)
                 writer.add_scalar("losses/q_values", old_val.mean().item(), global_step)
+                print("SPS:", int(global_step / (time.time() - start_time)))
+                writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
                 if on_colab() or ( args.track and True):
                     run.log({"losses/td_loss": loss  }, step = global_step)
                     run.log({"losses/q_values": old_val.mean().item()  }, step = global_step)
-                print("SPS:", int(global_step / (time.time() - start_time)))
-                writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+                    run.log({"charts/SPS": int(global_step / (time.time() - start_time))  }, step = global_step)
 
             # optimize the model
             optimizer.zero_grad()

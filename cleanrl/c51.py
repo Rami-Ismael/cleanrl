@@ -4,6 +4,8 @@ import os
 import random
 import time
 from distutils.util import strtobool
+import logging
+from quantize_methods import get_eager_quantization
 
 import gym
 import numpy as np
@@ -13,6 +15,39 @@ import torch.optim as optim
 from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
+# Optimizer 
+from algos.opt import Adan, hAdam
+
+## Set up Warning # Set up warnings
+import warnings
+warnings.filterwarnings(
+    action='ignore',
+    category=DeprecationWarning,
+    module=r'.*'
+)
+warnings.filterwarnings(
+    action='default',
+    module=r'torch.ao.quantization'
+)
+
+
+
+
+
+logging.basicConfig(filename="tests.log", level=logging.NOTSET,
+                    filemode='w',
+                    format='%(asctime)s:%(levelname)s:%(filename)s:%(lineno)d:%(message)s')
+try:
+    from quantize_methods import size_of_model
+except ModuleNotFoundError as e:
+    logging.error(e)
+
+def size_of_model(model):
+    name_file = "temp.pt"
+    torch.save(model.state_dict(), name_file)
+    size =  os.path.getsize(name_file)/1e6
+    os.remove(name_file)
+    return size
 
 def parse_args():
     # fmt: off
@@ -65,10 +100,36 @@ def parse_args():
         help="timestep to start learning")
     parser.add_argument("--train-frequency", type=int, default=10,
         help="the frequency of training")
+    # Quantization specific arguments
+    ## Quantize Weight
+    parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
+    parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)
+    parser.add_argument("--quantize-weight-quantize-min", type=int, default= 0)
+    parser.add_argument("--quantize-weight-quantize-max", type=int, default= 255)
+    parser.add_argument("--quantize-weight-dtype", type=str, default="quint8")
+    parser.add_argument("--quantize-weight-qscheme", type=str, default="per_tensor_affine")
+    parser.add_argument("--quantize-weight-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=False)
+    ## Quantize Activation
+    parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
+    parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
+    parser.add_argument("--quantize-activation-quantize-min", type=int, default= - ( 2 ** ( 8 ) ) // 2)
+    parser.add_argument("--quantize-activation-quantize-max", type=int, default= ( 2 ** 8 ) // 2 - 1)
+    parser.add_argument("--quantize-activation-qscheme", type=str, default="per_tensor_symmetric")
+    parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="qint8")
+    parser.add_argument("--quantize-activation-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    ## Other papers algorithm and ideas
+    parser.add_argument("--optimizer" , type=str, default="Adam")
+    args = parser.parse_args()
     args = parser.parse_args()
     # fmt: on
     return args
-
+## A method to check if my code is runnning on google colab
+import sys
+def on_colab() -> bool:
+    if 'google.colab' in sys.modules:
+        return True
+    else:
+        return False
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     def thunk():
@@ -109,6 +170,14 @@ class QNetwork(nn.Module):
         if action is None:
             action = torch.argmax(q_values, 1)
         return action, pmfs[torch.arange(len(x)), action]
+    ## fuse the model 
+    ## Fuse the model
+    def fuse_model(self):
+        layers = list()
+        for index in range( 0, len(self.network) - 2 , 2):
+            layers.append([str(index) , str(index + 1)])
+        print(f"Layers to fuse {layers}")
+        torch.ao.quantization.fuse_modules(self.network, layers, inplace=True)
 
 
 def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
@@ -117,15 +186,48 @@ def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
 
 
 if __name__ == "__main__":
+    print("Starting the training a DQN agent")
     args = parse_args()
+    if args.quantize_activation_quantize_min > args.quantize_activation_quantize_max:
+        raise ValueError(f"{args.quantize_activation_quantize_min} is greater than {args.quantize_activation_quantize_max}")
+    ## Set the Quantzation Dtypes to the a Torch Dtypes 
+    if args.quantize_activation_quantize_dtype is not None:
+        if args.quantize_activation_quantize_dtype == "quint8":
+            args.quantize_activation_quantize_dtype = torch.quint8
+        elif args.quantize_activation_quantize_dtype == "qint8":
+            args.quantize_activation_quantize_dtype = torch.qint8
+        else:
+            raise ValueError(f"{args.quantize_activation_quantize_dtype} is not supported for quantization")
+    if args.quantize_weight_dtype is not None:
+        if args.quantize_weight_dtype == "quint8":
+            args.quantize_weight_dtype = torch.quint8
+        elif args.quantize_weight_dtype == "qint8":
+            args.quantize_weight_dtype = torch.qint8
+        else:
+            raise ValueError(f"{args.quantize_weight_dtype} is not supported for quantization")
+    ## Set the Quantization Scheme to the Torch Quantization Scheme instead of a string which is the default
+    if args.quantize_activation_qscheme is not None and isinstance( args.quantize_activation_qscheme , str):
+        if args.quantize_activation_qscheme == "per_tensor_symmetric":
+            args.quantize_activation_qscheme = torch.per_tensor_symmetric
+        elif args.quantize_activation_qscheme == "per_tensor_affine":
+            args.quantize_activation_qscheme = torch.per_tensor_affine
+        else:
+            raise ValueError(f"{args.quantize_activation_qscheme} is not supported for quantization")
+    if args.quantize_weight_qscheme is not None and isinstance(args.quantize_weight_qscheme, str):
+        if args.quantize_weight_qscheme == "per_tensor_symmetric":
+            args.quantize_weight_qscheme = torch.per_tensor_symmetric
+        elif args.quantize_weight_qscheme == "per_tensor_affine":
+            args.quantize_weight_qscheme = torch.per_tensor_affine
+        else:
+            raise ValueError(f"{args.quantize_weight_qscheme} is not supported for quantization")
     run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
 
-        wandb.init(
+        run = wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
-            sync_tensorboard=True,
+            sync_tensorboard = False ,  ## Disable wandb sync with tensorboard for google colab 
             config=vars(args),
             name=run_name,
             monitor_gym=True,
@@ -148,10 +250,81 @@ if __name__ == "__main__":
     # env setup
     envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
-
+    ## Select the optimzer of your choice
+    optimizer_of_choice =  None
+    if args.optimizer == 'Adam':
+        optimizer_of_choice = torch.optim.Adam
+    elif args.optimizer == "hAdam":
+        optimizer_of_choice = hAdam
+    elif args.optimizer == 'Adan':
+        optimizer_of_choice =   Adan
+    logging.info(f"The optimizer {optimizer_of_choice} is being used")
+    
     q_network = QNetwork(envs, n_atoms=args.n_atoms, v_min=args.v_min, v_max=args.v_max).to(device)
-    optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate, eps=0.01 / args.batch_size)
+    logging.info(f"The Q Value Network is {q_network}")
+    if args.quantize_weight or args.quantize_activation:
+        q_network.quantize = True
+        ### Eager Mode Quantization
+        '''
+        1. Fuse the model
+        2. The Quantization Configuration for QAT
+        3 . Call the Prepare function
+        '''
+        ## Fuse the layer you must do this before you call the prepare function and set the model to eval mode
+        q_network.eval()
+        q_network.fuse_model()
+        ## Set the model to train mode to set the qat configuration of the model 
+        q_network.train()
+        print(args.quantize_activation)
+        q_network.qconfig = get_eager_quantization(
+            weight_quantize = args.quantize_weight,
+            weight_quantization_min =  args.quantize_weight_quantize_min , 
+            weight_quantization_max = args.quantize_weight_quantize_max,
+            weight_quantization_dtype = args.quantize_weight_dtype,
+            weight_reduce_range= args.quantize_weight_reduce_range,
+            activation_quantize= args.quantize_activation,
+            activation_quantization_min = args.quantize_activation_quantize_min,
+            activation_quantization_max = args.quantize_activation_quantize_max,
+            activation_quantization_dtype = args.quantize_activation_quantize_dtype,
+            activation_quantization_qscheme = args.quantize_activation_qscheme,
+            activation_reduce_range = args.quantize_activation_reduce_range,
+        )
+        ## inplace will modify the model in place memory. There is no need to create a new model and qat module will be added
+        torch.ao.quantization.prepare_qat(q_network, inplace=True)
+    optimizer = optimizer_of_choice(q_network.parameters(), lr=args.learning_rate, eps=0.01 / args.batch_size)
+    ## Target Network
     target_network = QNetwork(envs, n_atoms=args.n_atoms, v_min=args.v_min, v_max=args.v_max).to(device)
+    ## Eager Quantization
+    if args.quantize_weight or args.quantize_activation:
+        target_network.quantize = True
+        
+        ### Eager Mode Quantization
+        '''
+        1. Fuse the model
+        2. The Quantization Configuration for QAT
+        3 . Call the Prepare function
+        '''
+        ## Fuse the layer you must do this before you call the prepare function and set the model to eval mode
+        target_network.eval()
+        target_network.fuse_model()
+        ## Set the model to train mode to set the qat configuration of the model 
+        target_network.train()
+        print(args.quantize_activation)
+        target_network.qconfig = get_eager_quantization(
+            weight_quantize = args.quantize_weight,
+            weight_quantization_min =  args.quantize_weight_quantize_min , 
+            weight_quantization_max = args.quantize_weight_quantize_max,
+            weight_quantization_dtype = args.quantize_weight_dtype,
+            weight_reduce_range= args.quantize_weight_reduce_range,
+            activation_quantize= args.quantize_activation,
+            activation_quantization_min = args.quantize_activation_quantize_min,
+            activation_quantization_max = args.quantize_activation_quantize_max,
+            activation_quantization_dtype = args.quantize_activation_quantize_dtype,
+            activation_quantization_qscheme = args.quantize_activation_qscheme,
+            activation_reduce_range = args.quantize_activation_reduce_range,
+        )
+        ## inplace will modify the model in place memory. There is no need to create a new model and qat module will be added
+        torch.ao.quantization.prepare_qat(target_network, inplace=True)   
     target_network.load_state_dict(q_network.state_dict())
 
     rb = ReplayBuffer(
@@ -184,6 +357,10 @@ if __name__ == "__main__":
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                 writer.add_scalar("charts/epsilon", epsilon, global_step)
+                if args.track:
+                    run.log(data = {"charts/episodic_return": info["episode"]["r"]}  , step = global_step)
+                    run.log({"charts/episodic_length": info["episode"]["l"]  }, step = global_step)
+                    run.log({"charts/epsilon": epsilon  }, step = global_step)
                 break
 
         # TRY NOT TO MODIFY: save data to reply buffer; handle `terminal_observation`
@@ -227,6 +404,10 @@ if __name__ == "__main__":
                 writer.add_scalar("losses/q_values", old_val.mean().item(), global_step)
                 print("SPS:", int(global_step / (time.time() - start_time)))
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+                if args.track:
+                    run.log({"losses/loss": loss.item()  }, step = global_step)
+                    run.log({"losses/q_values": old_val.mean().item()  }, step = global_step)
+                    run.log({"charts/SPS": int(global_step / (time.time() - start_time))  }, step = global_step)
 
             # optimize the model
             optimizer.zero_grad()
@@ -239,3 +420,7 @@ if __name__ == "__main__":
 
     envs.close()
     writer.close()
+    ## Stop logging of Weight and Bias
+    if args.track:
+        wandb.finish()
+        run.finish()
