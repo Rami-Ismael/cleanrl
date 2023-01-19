@@ -111,7 +111,7 @@ def parse_args():
     parser.add_argument("--quantize-weight-quantize-max", type=int, default= 255)
     parser.add_argument("--quantize-weight-dtype", type=str, default="quint8")
     parser.add_argument("--quantize-weight-qscheme", type=str, default="per_tensor_affine")
-    parser.add_argument("--quantize-weight-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--quantize-weight-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=False)
     ## Quantize Activation
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
@@ -189,6 +189,8 @@ def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
 if __name__ == "__main__":
     print("Starting the training a DQN agent")
     args = parse_args()
+    if args.quantize_activation_quantize_min > args.quantize_activation_quantize_max:
+        raise ValueError(f"{args.quantize_activation_quantize_min} is greater than {args.quantize_activation_quantize_max}")
     ## Set the Quantzation Dtypes to the a Torch Dtypes 
     if args.quantize_activation_quantize_dtype is not None:
         if args.quantize_activation_quantize_dtype == "quint8":

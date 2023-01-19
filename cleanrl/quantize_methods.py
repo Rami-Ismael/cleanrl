@@ -1,7 +1,7 @@
 import torch
 import os
 from torch.ao.quantization.fake_quantize import FakeQuantize
-from torch.ao.quantization import MinMaxObserver
+from torch.ao.quantization import MinMaxObserver , MovingAverageMinMaxObserver
 from torch.ao.quantization.qconfig import QConfig
 import torch
 def size_of_model(model):
@@ -14,14 +14,14 @@ def size_of_model(model):
 
 def get_eager_quantization(
     weight_quantize:bool  = True,
-    weight_observer_type:str = "moving_average_minmax",
+    weight_observer_type:str = "moving_average_min-max",
     weight_quantization_min:int = 0,
     weight_quantization_max:int = 255,
     weight_quantization_dtype:torch.dtype = torch.quint8,
     weight_quantization_qscheme:torch.qscheme = torch.per_tensor_symmetric,
     weight_reduce_range = True,
     activation_quantize:bool = True,
-    activation_observer_type:str = "moving_average_minmax",
+    activation_observer_type:str = "min_max_observer",
     activation_quantization_min:int = -128,
     activation_quantization_max:int = 127,
     activation_quantization_dtype:torch.dtype = torch.quint8,
@@ -33,13 +33,14 @@ def get_eager_quantization(
     assert isinstance( weight_quantization_qscheme , torch.qscheme)
     assert isinstance( activation_quantization_qscheme , torch.qscheme)
     ## all quantization  in eager mode are unifrom quantization 
+    ##https://pytorch.org/blog/quantization-in-practice/
     weight_quantization_fake_quantize = torch.nn.Identity
     if weight_quantize:
         weight_quantization_fake_quantize = FakeQuantize.with_args(
-                    observer =  MinMaxObserver.with_args(
+                    observer =  MovingAverageMinMaxObserver.with_args(
                         dtype = weight_quantization_dtype,
                         qscheme = weight_quantization_qscheme,
-                        reduce_range = False , 
+                        reduce_range = weight_reduce_range , 
                         quant_min= weight_quantization_min,
                         quant_max = weight_quantization_max,
                     ))
@@ -51,7 +52,7 @@ def get_eager_quantization(
                         quant_max = activation_quantization_max,
                         dtype = activation_quantization_dtype,
                         qscheme = activation_quantization_qscheme,
-                        reduce_range = False
+                        reduce_range = activation_reduce_range
                     ))
     quantization_config = QConfig(
         weight = weight_quantization_fake_quantize,
