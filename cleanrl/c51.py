@@ -104,18 +104,18 @@ def parse_args():
     ## Quantize Weight
     parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)
-    parser.add_argument("--quantize-weight-quantize-min", type=int, default= 0)
-    parser.add_argument("--quantize-weight-quantize-max", type=int, default= 255)
-    parser.add_argument("--quantize-weight-dtype", type=str, default="quint8")
-    parser.add_argument("--quantize-weight-qscheme", type=str, default="per_tensor_affine")
+    parser.add_argument("--quantize-weight-quantize-min", type=int, default=  ( 2 ** ( 8 ) ) // 2)
+    parser.add_argument("--quantize-weight-quantize-max", type=int, default = ( 2 ** 8 ) // 2 - 1)
+    parser.add_argument("--quantize-weight-dtype", type=str, default="qint8")
+    parser.add_argument("--quantize-weight-qscheme", type=str, default="per_tensor_symmetric")
     parser.add_argument("--quantize-weight-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=False)
     ## Quantize Activation
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
-    parser.add_argument("--quantize-activation-quantize-min", type=int, default= - ( 2 ** ( 8 ) ) // 2)
-    parser.add_argument("--quantize-activation-quantize-max", type=int, default= ( 2 ** 8 ) // 2 - 1)
-    parser.add_argument("--quantize-activation-qscheme", type=str, default="per_tensor_symmetric")
-    parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="qint8")
+    parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
+    parser.add_argument("--quantize-activation-quantize-max", type=int, default= ( 2 ** 8 ) - 1)
+    parser.add_argument("--quantize-activation-qscheme", type=str, default="per_tensor_asymmetric")
+    parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
     parser.add_argument("--quantize-activation-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
     ## Other papers algorithm and ideas
     parser.add_argument("--optimizer" , type=str, default="Adam")
@@ -233,6 +233,12 @@ if __name__ == "__main__":
             monitor_gym=True,
             save_code=True,
         )
+        ## log the a test.log file to wandb 
+        try:
+            wandb.save("test.log")
+        except:
+            print("Could not save the test.log file to wandb")
+        print("Save the test.log file to wandb")
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
         "hyperparameters",
@@ -420,6 +426,10 @@ if __name__ == "__main__":
 
     envs.close()
     writer.close()
+    try:
+            wandb.save("test.log")
+    except:
+            print("Could not save the test.log file to wandb")
     ## Stop logging of Weight and Bias
     if args.track:
         wandb.finish()
