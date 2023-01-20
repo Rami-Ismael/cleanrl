@@ -31,7 +31,6 @@ def get_observer( observer_type:str = "min_max_observer"):
 
 def get_eager_quantization(
     weight_quantize:bool  = True,
-    weight_observer_type:str = "moving_average_min_max",
     weight_quantization_min:int = -128,
     weight_quantization_max:int = 127,
     weight_quantization_dtype:torch.dtype = torch.qint8,
@@ -40,7 +39,6 @@ def get_eager_quantization(
     w_observer:str = "moving_average_min_max",
     w_fakequantize:str = "fake_quantize",
     activation_quantize:bool = True,
-    activation_observer_type:str = "min_max_observer",
     activation_quantization_min:int = 0,
     activation_quantization_max:int = 255,
     activation_quantization_dtype:torch.dtype = torch.quint8,
@@ -72,7 +70,7 @@ def get_eager_quantization(
     activation_quantization_fake_quantize = torch.nn.Identity
     if activation_quantize:
             activation_quantization_fake_quantize = get_qat_algorithm(a_fakequantize).with_args(
-                    observer =   get_observer(w_observer).with_args( 
+                    observer =   get_observer(a_observer).with_args( 
                         quant_min = activation_quantization_min,
                         quant_max = activation_quantization_max,
                         dtype = activation_quantization_dtype,
