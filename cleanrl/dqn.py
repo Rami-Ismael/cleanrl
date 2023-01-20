@@ -104,14 +104,21 @@ def parse_args():
         help="the frequency of training")
     
     # Quantization specific arguments 
+    
+    # Quantization 
+
     parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)
-    parser.add_argument("--quantize-weight-quantize-min", type=int, default=  -( 2 ** ( 8 ) ) // 2)
-    parser.add_argument("--quantize-weight-quantize-max", type=int, default = ( 2 ** 8 ) // 2 - 1)
+    parser.add_argument("--quantize-weight-quantize-min", type=int, default = -128)
+    parser.add_argument("--quantize-weight-quantize-max", type=int, default = 127)
     parser.add_argument("--quantize-weight-dtype", type=str, default="qint8")
     parser.add_argument("--quantize-weight-qscheme", type=str, default="per_tensor_symmetric")
     parser.add_argument("--quantize-weight-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=False)
+    parser.add_argument("--w_observer", type=str, default="moving_average_min_max")
+    parser.add_argument("--w_fakequantize", type=str, default="fake_quantize")
+    
     ## Quantize Activation
+    
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
     parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
@@ -119,7 +126,11 @@ def parse_args():
     parser.add_argument("--quantize-activation-qscheme", type=str, default="per_tensor_affine")
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
     parser.add_argument("--quantize-activation-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--a_observer", type=str, default="moving_average_min_max")
+    parser.add_argument("--a_fakequantize", type=str, default="fake_quantize")
+    
     ## Other papers algorithm and ideas
+    
     parser.add_argument("--optimizer" , type=str, default="Adam")
     args = parser.parse_args()
     # fmt: on
@@ -288,12 +299,16 @@ if __name__ == "__main__":
             weight_quantization_max = args.quantize_weight_quantize_max,
             weight_quantization_dtype = args.quantize_weight_dtype,
             weight_reduce_range= args.quantize_weight_reduce_range,
+            w_observer= args.quantize_weight_observer,
+            w_fakequantize= args.quantize_weight_fakequantize,
             activation_quantize= args.quantize_activation,
             activation_quantization_min = args.quantize_activation_quantize_min,
             activation_quantization_max = args.quantize_activation_quantize_max,
             activation_quantization_dtype = args.quantize_activation_quantize_dtype,
             activation_quantization_qscheme = args.quantize_activation_qscheme,
             activation_reduce_range = args.quantize_activation_reduce_range,
+            a_observer= args.quantize_activation_observer,
+            a_fakequantize= args.quantize_activation_fakequantize,
         )
         ## inplace will modify the model in place memory. There is no need to create a new model and qat module will be added
         torch.ao.quantization.prepare_qat(q_network, inplace=True)
@@ -322,12 +337,16 @@ if __name__ == "__main__":
             weight_quantization_max = args.quantize_weight_quantize_max,
             weight_quantization_dtype = args.quantize_weight_dtype,
             weight_reduce_range= args.quantize_weight_reduce_range,
+            w_observer= args.quantize_weight_observer,
+            w_fakequantize= args.quantize_weight_fakequantize,
             activation_quantize= args.quantize_activation,
             activation_quantization_min = args.quantize_activation_quantize_min,
             activation_quantization_max = args.quantize_activation_quantize_max,
             activation_quantization_dtype = args.quantize_activation_quantize_dtype,
             activation_quantization_qscheme = args.quantize_activation_qscheme,
             activation_reduce_range = args.quantize_activation_reduce_range,
+            a_observer= args.quantize_activation_observer,
+            a_fakequantize= args.quantize_activation_fakequantize,
         )
         ## inplace will modify the model in place memory. There is no need to create a new model and qat module will be added
         torch.ao.quantization.prepare_qat(target_network, inplace=True)       
