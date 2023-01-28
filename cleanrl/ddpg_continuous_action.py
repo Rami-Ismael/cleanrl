@@ -65,18 +65,35 @@ def parse_args():
     parser.add_argument("--noise-clip", type=float, default=0.5,
         help="noise clip parameter of the Target Policy Smoothing Regularization")
     
-    # Quantization specific arguments
-    ## Quantize Weight
+    # Quantization specific arguments 
+    
+    # Quantization 
+
     parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)
+    parser.add_argument("--quantize-weight-quantize-min", type=int, default = -128)
+    parser.add_argument("--quantize-weight-quantize-max", type=int, default = 127)
+    parser.add_argument("--quantize-weight-dtype", type=str, default="qint8")
+    parser.add_argument("--quantize-weight-qscheme", type=str, default="per_tensor_symmetric")
+    parser.add_argument("--quantize-weight-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=False)
+    parser.add_argument("--w_observer", type=str, default="moving_average_min_max")
+    parser.add_argument("--w_fakequantize", type=str, default="fake_quantize")
+    
     ## Quantize Activation
+    
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
-    parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="qint8")
+    parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
+    parser.add_argument("--quantize-activation-quantize-max", type=int, default= ( 2 ** 8 ) - 1)
+    parser.add_argument("--quantize-activation-qscheme", type=str, default="per_tensor_affine")
+    parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
+    parser.add_argument("--quantize-activation-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--a_observer", type=str, default="moving_average_min_max")
+    parser.add_argument("--a_fakequantize", type=str, default="fake_quantize")
     
     ## Other papers algorithm and ideas
-    parser.add_argument("--optimizer" , type=str, default="Adam")
     
+    parser.add_argument("--optimizer" , type=str, default="Adam")
     args = parser.parse_args()
     # fmt: on
     return args

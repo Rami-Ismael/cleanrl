@@ -100,16 +100,22 @@ def parse_args():
         help="timestep to start learning")
     parser.add_argument("--train-frequency", type=int, default=10,
         help="the frequency of training")
-    # Quantization specific arguments
-    ## Quantize Weight
+    # Quantization specific arguments 
+    
+    # Quantization 
+
     parser.add_argument("--quantize-weight", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-weight-bitwidth", type=int, default=8)
-    parser.add_argument("--quantize-weight-quantize-min", type=int, default=  -128 )
+    parser.add_argument("--quantize-weight-quantize-min", type=int, default = -128)
     parser.add_argument("--quantize-weight-quantize-max", type=int, default = 127)
     parser.add_argument("--quantize-weight-dtype", type=str, default="qint8")
     parser.add_argument("--quantize-weight-qscheme", type=str, default="per_tensor_symmetric")
     parser.add_argument("--quantize-weight-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=False)
+    parser.add_argument("--w_observer", type=str, default="moving_average_min_max")
+    parser.add_argument("--w_fakequantize", type=str, default="fake_quantize")
+    
     ## Quantize Activation
+    
     parser.add_argument("--quantize-activation" , type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True)
     parser.add_argument("--quantize-activation-bitwidth", type=int, default=8)
     parser.add_argument("--quantize-activation-quantize-min", type=int, default= 0)
@@ -117,9 +123,12 @@ def parse_args():
     parser.add_argument("--quantize-activation-qscheme", type=str, default="per_tensor_affine")
     parser.add_argument("--quantize-activation-quantize-dtype", type=str, default="quint8")
     parser.add_argument("--quantize-activation-reduce-range", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True)
+    parser.add_argument("--a_observer", type=str, default="moving_average_min_max")
+    parser.add_argument("--a_fakequantize", type=str, default="fake_quantize")
+    
     ## Other papers algorithm and ideas
+    
     parser.add_argument("--optimizer" , type=str, default="Adam")
-    args = parser.parse_args()
     args = parser.parse_args()
     # fmt: on
     return args
@@ -430,6 +439,14 @@ if __name__ == "__main__":
             wandb.save("test.log")
     except:
             print("Could not save the test.log file to wandb")
+    if args.save_model:
+        if args.quantize_weights and args.quantize_activations and args.quantize_weight_bits == 8 and args.quantize_activation_bits == 8:
+            torch.ao.quantization.convert(q_network, inplace=True)
+            logging.info(f"Model converted to 8 bit and the size of the model is {size_of_model(q_network)}")
+            logging.info(f"The q network is {q_network}")
+            model_path = os.path.join(args.save_path, "q_network.pt")
+            torch.save(q_network.state_dict(), model_path)
+        
     ## Stop logging of Weight and Bias
     if args.track:
         wandb.finish()
