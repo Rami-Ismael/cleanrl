@@ -299,16 +299,16 @@ if __name__ == "__main__":
             weight_quantization_max = args.quantize_weight_quantize_max,
             weight_quantization_dtype = args.quantize_weight_dtype,
             weight_reduce_range= args.quantize_weight_reduce_range,
-            w_observer= args.quantize_weight_observer,
-            w_fakequantize= args.quantize_weight_fakequantize,
+            w_observer= args.w_observer,
+            w_fakequantize= args.w_fakequantize,
             activation_quantize= args.quantize_activation,
             activation_quantization_min = args.quantize_activation_quantize_min,
             activation_quantization_max = args.quantize_activation_quantize_max,
             activation_quantization_dtype = args.quantize_activation_quantize_dtype,
             activation_quantization_qscheme = args.quantize_activation_qscheme,
             activation_reduce_range = args.quantize_activation_reduce_range,
-            a_observer= args.quantize_activation_observer,
-            a_fakequantize= args.quantize_activation_fakequantize,
+            a_observer= args.a_observer,
+            a_fakequantize= args.a_fakequantize,
         )
         ## inplace will modify the model in place memory. There is no need to create a new model and qat module will be added
         torch.ao.quantization.prepare_qat(q_network, inplace=True)
@@ -337,16 +337,16 @@ if __name__ == "__main__":
             weight_quantization_max = args.quantize_weight_quantize_max,
             weight_quantization_dtype = args.quantize_weight_dtype,
             weight_reduce_range= args.quantize_weight_reduce_range,
-            w_observer= args.quantize_weight_observer,
-            w_fakequantize= args.quantize_weight_fakequantize,
+            w_observer= args.w_observer,
+            w_fakequantize= args.w_fakequantize,
             activation_quantize= args.quantize_activation,
             activation_quantization_min = args.quantize_activation_quantize_min,
             activation_quantization_max = args.quantize_activation_quantize_max,
             activation_quantization_dtype = args.quantize_activation_quantize_dtype,
             activation_quantization_qscheme = args.quantize_activation_qscheme,
             activation_reduce_range = args.quantize_activation_reduce_range,
-            a_observer= args.quantize_activation_observer,
-            a_fakequantize= args.quantize_activation_fakequantize,
+            a_observer= args.a_observer,
+            a_fakequantize= args.a_fakequantize,
         )
         ## inplace will modify the model in place memory. There is no need to create a new model and qat module will be added
         torch.ao.quantization.prepare_qat(target_network, inplace=True)       
