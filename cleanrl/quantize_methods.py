@@ -3,7 +3,7 @@ import os
 from torch.ao.quantization.fake_quantize import FakeQuantize
 from torch.ao.quantization import MinMaxObserver , MovingAverageMinMaxObserver
 from torch.ao.quantization.qconfig import QConfig
-from dorefa import DorefaQuantize
+from dorefa import DoReFaFakeQuantize 
 import torch
 QAT_ALGORITHM = ["fake_quantize"]
 OBSERVER_TYPE = ["min_max_observer", "moving_average_min_max"]
@@ -17,7 +17,7 @@ def get_qat_algorithm( name_of_qat:str = "fake_quantize"):
     if name_of_qat == "fake_quantize":
         return FakeQuantize
     elif name_of_qat == "dorefa":
-        return DorefaQuantize
+        return DoReFaFakeQuantize
     else:
         raise ValueError("name_of_qat should be one of the following: {}".format(QAT_ALGORITHM))
 def get_observer( observer_type:str = "min_max_observer"):
