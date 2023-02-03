@@ -68,6 +68,12 @@ def parse_args():
         help="the entity (team) of wandb's project")
     parser.add_argument("--capture-video", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="weather to capture videos of the agent performances (check out `videos` folder)")
+    parser.add_argument("--save-model", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
+        help="whether to save model into the `runs/{run_name}` folder")
+    parser.add_argument("--upload-model", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
+        help="whether to upload the saved model to huggingface")
+    parser.add_argument("--hf-entity", type=str, default="",
+        help="the user or org name of the model repository from the Hugging Face Hub")
 
     # Algorithm specific arguments
     parser.add_argument("--env-id", type=str, default="CartPole-v1",
@@ -310,6 +316,7 @@ if __name__ == "__main__":
         )
         ## inplace will modify the model in place memory. There is no need to create a new model and qat module will be added
         torch.ao.quantization.prepare_qat(q_network, inplace=True)
+        logging.info(f"The Q Value Network is {q_network}")
     optimizer = optimizer_of_choice(q_network.parameters(), lr=args.learning_rate, eps=0.01 / args.batch_size)
     ## Target Network
     target_network = QNetwork(envs, n_atoms=args.n_atoms, v_min=args.v_min, v_max=args.v_max).to(device)
@@ -347,7 +354,8 @@ if __name__ == "__main__":
             a_fakequantize= args.a_fakequantize,
         )
         ## inplace will modify the model in place memory. There is no need to create a new model and qat module will be added
-        torch.ao.quantization.prepare_qat(target_network, inplace=True)   
+        torch.ao.quantization.prepare_qat(target_network, inplace=True)
+        logging.info(f"The Q Value Network is {target_network}")
     target_network.load_state_dict(q_network.state_dict())
 
     rb = ReplayBuffer(
@@ -448,12 +456,40 @@ if __name__ == "__main__":
     except:
             print("Could not save the test.log file to wandb")
     if args.save_model:
-        if args.quantize_weights and args.quantize_activations and args.quantize_weight_bits == 8 and args.quantize_activation_bits == 8:
+        if args.quantize_weight and args.quantize_activation and args.quantize_weight_bitwidth == 8 and args.quantize_activation_bitwidth == 8:
             torch.ao.quantization.convert(q_network, inplace=True)
             logging.info(f"Model converted to 8 bit and the size of the model is {size_of_model(q_network)}")
             logging.info(f"The q network is {q_network}")
             model_path = os.path.join(args.save_path, "q_network.pt")
             torch.save(q_network.state_dict(), model_path)
+        elif args.quantize_weights == False  and args.quantize_activations == False:
+            model_path = f"runs/{run_name}/{args.exp_name}.cleanrl_model"
+            model_data = {
+                "model_weights": q_network.state_dict(),
+                "args": vars(args),
+            }
+            torch.save(model_data, model_path)
+            print(f"model saved to {model_path}")
+            from cleanrl_utils.evals.c51_eval import evaluate
+            episodic_returns = evaluate(
+            model_path,
+            make_env,
+            args.env_id,
+            eval_episodes=10,
+            run_name=f"{run_name}-eval",
+            Model=QNetwork,
+            device=device,
+            epsilon=0.05,
+            )
+            for idx, episodic_return in enumerate(episodic_returns):
+                writer.add_scalar("eval/episodic_return", episodic_return, idx)
+
+            if args.upload_model:
+                from cleanrl_utils.huggingface import push_to_hub
+
+                repo_name = f"{args.env_id}-{args.exp_name}-seed{args.seed}"
+                repo_id = f"{args.hf_entity}/{repo_name}" if args.hf_entity else repo_name
+                push_to_hub(args, episodic_returns, repo_id, "C51", f"runs/{run_name}", f"videos/{run_name}-eval")
         
     ## Stop logging of Weight and Bias
     if args.track:
