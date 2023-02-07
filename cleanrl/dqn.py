@@ -277,7 +277,7 @@ if __name__ == "__main__":
 
     q_network = QNetwork(
                         env = envs,
-                         )
+                         ).to(device)
     logging.info(f"QNetwork: {q_network} ")
     if args.quantize_weight or args.quantize_activation:
         q_network.quantize = True
